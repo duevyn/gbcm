@@ -1,2 +1,4 @@
 build
 hello.c
+compile_commands.json
+*.o

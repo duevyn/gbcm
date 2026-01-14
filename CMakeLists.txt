@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(gbcm)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # set the output directory for built objects.
 # This makes sure that the dynamic library goes into the build directory automatically.
