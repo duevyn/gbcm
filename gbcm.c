@@ -2,6 +2,7 @@
 #include <SDL3/SDL_main.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "CPU.h"
 
 #define CLOCK 4194304
 #define DOTS_PER_FRAME 70224.0f
@@ -21,6 +22,7 @@ typedef struct PPU {
 } PPU;
 
 static PPU ppu;
+static CPU cpu;
 
 /* This function runs once at startup. */
 void init_sdl()
@@ -48,11 +50,6 @@ void hndlevnt(int *running)
 		    event.type == SDL_EVENT_QUIT)
 			*running = 0;
 	}
-}
-
-int cpu_step()
-{
-	return 4;
 }
 
 void ppu_step(int dots)
@@ -102,7 +99,7 @@ void emulate()
 	int ticks = 0;
 
 	do {
-		ticks = cpu_step();
+		ticks = cpu_step(&cpu);
 		ppu_step(ticks);
 	} while (ppu.mode != VBLNK);
 }
