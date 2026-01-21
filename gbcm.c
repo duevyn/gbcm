@@ -132,8 +132,9 @@ void render()
 	ppu.mode = SCAN;
 }
 
-int main(int argc, char **argv)
+int main(int argc, char *argv[])
 {
+	cpu_ldrom(&cpu, argv[1]);
 	init_sdl();
 	ppu.mode = SCAN;
 	int running = 1;

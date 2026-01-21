@@ -1,8 +1,11 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "CPU.h"
+#include "registers.h"
 
-instr optbl[256] = {
+struct instr optbl[256] = {
 	[0x00] = { "NOP", 1, 4, NULL },
 	[0x01] = { "LD BC, n16", 3, 12, NULL },
 	[0x02] = { "LD [BC], A", 1, 8, NULL },
@@ -261,7 +264,7 @@ instr optbl[256] = {
 	[0xFF] = { "RST $38", 1, 16, NULL },
 };
 
-instr cbtbl[256] = {
+struct instr cbtbl[256] = {
 	[0x00] = { "RLC B Z00C", 2, 8, NULL },
 	[0x01] = { "RLC C Z00C", 2, 8, NULL },
 	[0x02] = { "RLC D Z00C", 2, 8, NULL },
@@ -519,6 +522,114 @@ instr cbtbl[256] = {
 	[0xFE] = { "SET 7, [HL]", 2, 16, NULL },
 	[0xFF] = { "SET 7, A", 2, 8, NULL },
 };
+
+void initreg(struct CPU *cpu)
+{
+	cpu->rom[P1] = 0xcf;
+	cpu->rom[SB] = 0x00;
+	cpu->rom[SC] = 0x7e;
+	cpu->rom[DIV] = 0x18;
+
+	cpu->rom[TIMA] = 0;
+	cpu->rom[TMA] = 0;
+	cpu->rom[TAC] = 0xf8;
+	cpu->rom[IF] = 0xe1;
+
+	cpu->rom[NR10] = 0x80;
+	cpu->rom[NR11] = 0xbf;
+	cpu->rom[NR12] = 0xf3;
+	cpu->rom[NR13] = 0xff;
+	cpu->rom[NR14] = 0xbf;
+	cpu->rom[NR21] = 0x3f;
+	cpu->rom[NR22] = 0x00;
+	cpu->rom[NR23] = 0xff;
+	cpu->rom[NR24] = 0xbf;
+
+	cpu->rom[NR30] = 0x7f;
+	cpu->rom[NR31] = 0xff;
+	cpu->rom[NR32] = 0x9f;
+	cpu->rom[NR33] = 0xff;
+	cpu->rom[NR34] = 0xbf;
+	cpu->rom[NR41] = 0xff;
+	cpu->rom[NR42] = 0x00;
+	cpu->rom[NR43] = 0x00;
+	cpu->rom[NR44] = 0xbf;
+	cpu->rom[NR50] = 0x77;
+	cpu->rom[NR51] = 0xf3;
+	cpu->rom[NR52] = 0xf1;
+
+	cpu->rom[LCDC] = 0x91;
+	cpu->rom[STAT] = 0x81;
+	cpu->rom[SCY] = 0x00;
+	cpu->rom[SCX] = 0x00;
+	cpu->rom[LY] = 0x91;
+	cpu->rom[LYC] = 0x00;
+	cpu->rom[DMA] = 0xff;
+	cpu->rom[BGP] = 0xfc;
+	cpu->rom[WY] = 0x00;
+	cpu->rom[WX] = 0x00;
+	cpu->rom[IE] = 0x00;
+}
+
+void initreg_cgb(struct CPU *cpu)
+{
+	// overwrite dmg values
+	cpu->rom[SC] = 0x7f;
+	cpu->rom[DMA] = 0;
+
+	// exclusive cgb
+	cpu->rom[KEY1] = 0x7e;
+	cpu->rom[VBK] = 0xfe;
+	cpu->rom[HDMA1] = 0xff;
+	cpu->rom[HDMA2] = 0xff;
+	cpu->rom[HDMA3] = 0xff;
+	cpu->rom[HDMA4] = 0xff;
+	cpu->rom[HDMA5] = 0xff;
+	cpu->rom[RP] = 0x3e;
+	cpu->rom[SVBK] = 0xf8;
+}
+
+void cpu_ldrom(struct CPU *cpu, char *rom)
+{
+	size_t sz = 2097152;
+	int fd = open(rom, O_RDONLY);
+	if (fd < 0) {
+		perror("Could not open metal gear solid\n");
+		exit(EXIT_FAILURE);
+	}
+	cpu->rom = malloc(sz);
+	ssize_t n = read(fd, cpu->rom, sz);
+	if (n < sz) {
+		perror("Did not read 2097152 bytes\n");
+		exit(EXIT_FAILURE);
+	}
+
+	// initial values. figure out where i got these
+	// these are from gameboy cpu manual.
+	cpu->af = 0x11b0;
+	cpu->bc = 0x0013;
+	cpu->de = 0x00d8;
+	cpu->hl = 0x014d;
+	cpu->sp = 0xfffe;
+
+	// pan doc values. assume these are correct but verify against values above
+	// after investigating. values above are dmg defaults.
+	cpu->bc = 0x0013; //cgb dmgmode 0x0000
+	cpu->de = 0xff56; //cgb dmg mode 0x0008
+	cpu->hl = 0x000d; // cgb dmg ????
+
+	cpu->ime = cpu->dblspd = false;
+	cpu->pc = 0x150; // assume valid rom. (cpu->pc = 0x100)
+	fprintf(stderr,
+		"af 0x%04x (addr 0x%p), a 0x%02x (addr 0x%p), f 0x%02x (addr 0x%p)\n",
+		cpu->af, &cpu->af, cpu->a, &cpu->a, cpu->f, &cpu->f);
+	fprintf(stderr,
+		"hl 0x%04x (addr 0x%p), h 0x%02x (addr 0x%p), l 0x%02x (addr 0x%p)\n",
+		cpu->hl, &cpu->hl, cpu->h, &cpu->h, cpu->l, &cpu->l);
+
+	initreg(cpu);
+	initreg_cgb(cpu);
+}
 
 int cpu_exec(struct CPU *cpu)
 {
