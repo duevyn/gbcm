@@ -5,8 +5,27 @@
 #include "CPU.h"
 #include "registers.h"
 
+void op_noop(struct CPU *cpu)
+{
+}
+
+void op_di(struct CPU *cpu)
+{
+	cpu->ime = false;
+}
+
+static inline uint16_t ld_le16(const uint8_t *src)
+{
+	return (uint16_t)src[0] | ((uint16_t)src[1] << 8);
+}
+
+void op_ld_sp_n16(struct CPU *cpu)
+{
+	cpu->sp = ld_le16(cpu->rom + cpu->pc);
+}
+
 struct instr optbl[256] = {
-	[0x00] = { "NOP", 1, 4, NULL },
+	[0x00] = { "NOP", 1, 4, op_noop },
 	[0x01] = { "LD BC, n16", 3, 12, NULL },
 	[0x02] = { "LD [BC], A", 1, 8, NULL },
 	[0x03] = { "INC BC", 1, 8, NULL },
@@ -55,7 +74,7 @@ struct instr optbl[256] = {
 	[0x2E] = { "LD L, n8", 2, 8, NULL },
 	[0x2F] = { "CPL -11-", 1, 4, NULL },
 	[0x30] = { "JR NC, e8", 2, 12, NULL },
-	[0x31] = { "LD SP, n16", 3, 12, NULL },
+	[0x31] = { "LD SP, n16", 3, 12, op_ld_sp_n16 },
 	[0x32] = { "LD [HL], A", 1, 8, NULL },
 	[0x33] = { "INC SP", 1, 8, NULL },
 	[0x34] = { "INC [HL] Z0H-", 1, 12, NULL },
@@ -249,7 +268,7 @@ struct instr optbl[256] = {
 	[0xF0] = { "LDH A, [a8]", 2, 12, NULL },
 	[0xF1] = { "POP AF ZNHC", 1, 12, NULL },
 	[0xF2] = { "LDH A, [C]", 1, 8, NULL },
-	[0xF3] = { "DI", 1, 4, NULL },
+	[0xF3] = { "DI", 1, 4, op_di },
 	[0xF4] = { "ILLEGAL_F4", 1, 4, NULL },
 	[0xF5] = { "PUSH AF", 1, 16, NULL },
 	[0xF6] = { "OR A, n8 Z000", 2, 8, NULL },
@@ -589,6 +608,12 @@ void initreg_cgb(struct CPU *cpu)
 	cpu->rom[SVBK] = 0xf8;
 }
 
+void cpu_fetch(struct CPU *cpu)
+{
+	cpu->op = cpu->rom[cpu->pc++];
+	cpu->instr = &optbl[cpu->op];
+}
+
 void cpu_ldrom(struct CPU *cpu, char *rom)
 {
 	size_t sz = 2097152;
@@ -620,6 +645,8 @@ void cpu_ldrom(struct CPU *cpu, char *rom)
 
 	cpu->ime = cpu->dblspd = false;
 	cpu->pc = 0x150; // assume valid rom. (cpu->pc = 0x100)
+	cpu_fetch(cpu);
+
 	fprintf(stderr,
 		"af 0x%04x (addr 0x%p), a 0x%02x (addr 0x%p), f 0x%02x (addr 0x%p)\n",
 		cpu->af, &cpu->af, cpu->a, &cpu->a, cpu->f, &cpu->f);
@@ -633,12 +660,17 @@ void cpu_ldrom(struct CPU *cpu, char *rom)
 
 int cpu_exec(struct CPU *cpu)
 {
-	int result = 4;
-	return result;
-}
+	fprintf(stderr, "0x%04x: op %02x -- %s %d,%d ", cpu->pc - 1, cpu->op,
+		cpu->instr->mnem, cpu->instr->len, cpu->instr->dots);
+	if (!cpu->instr->exec) {
+		fprintf(stderr, " !!! ERROR: NOT IMPLEMENTED\n\n");
+		exit(1);
+	}
 
-void cpu_fetch(struct CPU *cpu)
-{
+	cpu->instr->exec(cpu);
+	cpu->pc += cpu->instr->len - 1;
+	//fprintf(stderr, "\n");
+	return cpu->instr->dots;
 }
 
 int cpu_step(struct CPU *cpu)

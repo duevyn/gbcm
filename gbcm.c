@@ -21,6 +21,13 @@ typedef struct PPU {
 	} mode;
 } PPU;
 
+const char *const ModeNames[] = {
+	"H Blank",
+	"V Blank",
+	"SCAN",
+	"DRAW",
+};
+
 static PPU ppu;
 static CPU cpu;
 
@@ -58,21 +65,19 @@ void ppu_step(int dots)
 	// Update modes, render pixels to gb_framebuffer if in drawing mode
 	// If LY == 144 and entering VBlank, set ppu.frame_ready = 1, trigger interrupt
 	// If LY == 154, reset to 0 for next frame
-	fprintf(stderr, " -- b4 dots %02d mode %d", ppu.dots, ppu.mode);
+	//fprintf(stderr, "::: dots %02d md %d\n", ppu.dots, ppu.mode);
 	ppu.dots += dots;
 	if (ppu.dots >= 154 || ppu.dots <= 80) {
 		ppu.mode = SCAN;
 		ppu.dots = ppu.dots >= 154 ? 0 : ppu.dots;
-		fprintf(stderr, " :: af dots %02d mode %d\n", ppu.dots,
-			ppu.mode);
+		fprintf(stderr, ":: (%s: %d)\n", ModeNames[ppu.mode], ppu.dots);
 		return;
 	}
 	if (ppu.dots >= 144 && ppu.dots < 154) {
 		// last for 4560 dots (10 scanlines)
 		// gameboy triggers vblank interrupt here
 		ppu.mode = VBLNK;
-		fprintf(stderr, " :: af dots %02d mode %d\n", ppu.dots,
-			ppu.mode);
+		fprintf(stderr, ":: (%s: %d)\n", ModeNames[ppu.mode], ppu.dots);
 		return;
 	}
 
