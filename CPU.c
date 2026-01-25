@@ -193,13 +193,61 @@ uint8_t cb_set_7_$HL(struct CPU *cpu) //0xfe
 	return cpu->instr->dots[0];
 }
 
-uint8_t cb_bit_7_$HL(struct CPU *cpu) //0x7e
+static inline void bit_u3_$HL(struct CPU *cpu, uint8_t n)
 {
+	fprintf(stderr, "f 0x%02x ", cpu->f);
 	uint8_t $hl = cpu->rom[cpu->hl];
-	cpu->fZ = !($hl & 0x80);
+	cpu->fZ = !($hl & (1 << n));
 	cpu->fN = 0;
 	cpu->fH = 1;
-	fprintf(stderr, "[HL] 0b%08b f 0b%08b", $hl, cpu->f);
+	fprintf(stderr, "[HL] 0b%08b f 0x%02x", $hl, cpu->f);
+}
+
+uint8_t cb_bit_0_$HL(struct CPU *cpu) //0x46
+{
+	bit_u3_$HL(cpu, 0);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_bit_1_$HL(struct CPU *cpu) //0x4e
+{
+	bit_u3_$HL(cpu, 1);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_bit_2_$HL(struct CPU *cpu) //0x56
+{
+	bit_u3_$HL(cpu, 2);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_bit_3_$HL(struct CPU *cpu) //0x5e
+{
+	bit_u3_$HL(cpu, 3);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_bit_4_$HL(struct CPU *cpu) //0x66
+{
+	bit_u3_$HL(cpu, 4);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_bit_5_$HL(struct CPU *cpu) //0x6e
+{
+	bit_u3_$HL(cpu, 5);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_bit_6_$HL(struct CPU *cpu) //0x76
+{
+	bit_u3_$HL(cpu, 6);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_bit_7_$HL(struct CPU *cpu) //0x7e
+{
+	bit_u3_$HL(cpu, 7);
 	return cpu->instr->dots[0];
 }
 
@@ -876,6 +924,7 @@ int cpu_exec(struct CPU *cpu)
 	if (cpu->prefix) {
 		fprintf(stderr, "\n========================================\n");
 	}
+
 	printInstr(cpu);
 	if (!cpu->instr->exec) {
 		fprintf(stderr, " !!! ERROR: NOT IMPLEMENTED\n\n");
