@@ -80,6 +80,7 @@ void ppu_step(int dots)
 		fprintf(stderr, ":: (%s: %d)\n", ModeNames[ppu.mode], ppu.dots);
 		return;
 	}
+	fprintf(stderr, ":: (%s: %d)\n", ModeNames[ppu.mode], ppu.dots);
 
 	// figure out mode 3 (draw) length: 172-289 dots
 	// mode 3: During Mode 3, by default the PPU outputs one pixel to the screen per dot, from left to right; the screen is 160 pixels wide, so the minimum Mode 3 length is 160 + 12(1) = 172 dots.
@@ -91,7 +92,6 @@ void ppu_step(int dots)
 	// enables raster effects
 	// update LY to reflect next line
 	// The Game Boy constantly compares the value of the LYC and LY registers. When both values are identical, the “LYC=LY” flag in the STAT register is set, and (if enabled) a STAT interrupt is requested.
-	fprintf(stderr, "\n");
 	return;
 }
 

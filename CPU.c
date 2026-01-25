@@ -5,541 +5,736 @@
 #include "CPU.h"
 #include "registers.h"
 
-void op_noop(struct CPU *cpu)
-{
-}
-
-void op_di(struct CPU *cpu)
-{
-	cpu->ime = false;
-}
-
+// portable 16 bit operations for BE/LE compatability
 static inline uint16_t ld_le16(const uint8_t *src)
 {
 	return (uint16_t)src[0] | ((uint16_t)src[1] << 8);
 }
 
-void op_ld_sp_n16(struct CPU *cpu)
+static inline void wr_le16(uint8_t *dest, uint16_t val)
 {
-	cpu->sp = ld_le16(cpu->rom + cpu->pc);
+	dest[0] = val & 0xff;
+	dest[1] = (val >> 8) & 0xff;
 }
 
-struct instr optbl[256] = {
-	[0x00] = { "NOP", 1, 4, op_noop },
-	[0x01] = { "LD BC, n16", 3, 12, NULL },
-	[0x02] = { "LD [BC], A", 1, 8, NULL },
-	[0x03] = { "INC BC", 1, 8, NULL },
-	[0x04] = { "INC B Z0H-", 1, 4, NULL },
-	[0x05] = { "DEC B Z1H-", 1, 4, NULL },
-	[0x06] = { "LD B, n8", 2, 8, NULL },
-	[0x07] = { "RLCA 000C", 1, 4, NULL },
-	[0x08] = { "LD [a16], SP", 3, 20, NULL },
-	[0x09] = { "ADD HL, BC -0HC", 1, 8, NULL },
-	[0x0A] = { "LD A, [BC]", 1, 8, NULL },
-	[0x0B] = { "DEC BC", 1, 8, NULL },
-	[0x0C] = { "INC C Z0H-", 1, 4, NULL },
-	[0x0D] = { "DEC C Z1H-", 1, 4, NULL },
-	[0x0E] = { "LD C, n8", 2, 8, NULL },
-	[0x0F] = { "RRCA 000C", 1, 4, NULL },
-	[0x10] = { "STOP n8", 2, 4, NULL },
-	[0x11] = { "LD DE, n16", 3, 12, NULL },
-	[0x12] = { "LD [DE], A", 1, 8, NULL },
-	[0x13] = { "INC DE", 1, 8, NULL },
-	[0x14] = { "INC D Z0H-", 1, 4, NULL },
-	[0x15] = { "DEC D Z1H-", 1, 4, NULL },
-	[0x16] = { "LD D, n8", 2, 8, NULL },
-	[0x17] = { "RLA 000C", 1, 4, NULL },
-	[0x18] = { "JR e8", 2, 12, NULL },
-	[0x19] = { "ADD HL, DE -0HC", 1, 8, NULL },
-	[0x1A] = { "LD A, [DE]", 1, 8, NULL },
-	[0x1B] = { "DEC DE", 1, 8, NULL },
-	[0x1C] = { "INC E Z0H-", 1, 4, NULL },
-	[0x1D] = { "DEC E Z1H-", 1, 4, NULL },
-	[0x1E] = { "LD E, n8", 2, 8, NULL },
-	[0x1F] = { "RRA 000C", 1, 4, NULL },
-	[0x20] = { "JR NZ, e8", 2, 12, NULL },
-	[0x21] = { "LD HL, n16", 3, 12, NULL },
-	[0x22] = { "LD [HL], A", 1, 8, NULL },
-	[0x23] = { "INC HL", 1, 8, NULL },
-	[0x24] = { "INC H Z0H-", 1, 4, NULL },
-	[0x25] = { "DEC H Z1H-", 1, 4, NULL },
-	[0x26] = { "LD H, n8", 2, 8, NULL },
-	[0x27] = { "DAA Z-0C", 1, 4, NULL },
-	[0x28] = { "JR Z, e8", 2, 12, NULL },
-	[0x29] = { "ADD HL, HL -0HC", 1, 8, NULL },
-	[0x2A] = { "LD A, [HL]", 1, 8, NULL },
-	[0x2B] = { "DEC HL", 1, 8, NULL },
-	[0x2C] = { "INC L Z0H-", 1, 4, NULL },
-	[0x2D] = { "DEC L Z1H-", 1, 4, NULL },
-	[0x2E] = { "LD L, n8", 2, 8, NULL },
-	[0x2F] = { "CPL -11-", 1, 4, NULL },
-	[0x30] = { "JR NC, e8", 2, 12, NULL },
-	[0x31] = { "LD SP, n16", 3, 12, op_ld_sp_n16 },
-	[0x32] = { "LD [HL], A", 1, 8, NULL },
-	[0x33] = { "INC SP", 1, 8, NULL },
-	[0x34] = { "INC [HL] Z0H-", 1, 12, NULL },
-	[0x35] = { "DEC [HL] Z1H-", 1, 12, NULL },
-	[0x36] = { "LD [HL], n8", 2, 12, NULL },
-	[0x37] = { "SCF -001", 1, 4, NULL },
-	[0x38] = { "JR C, e8", 2, 12, NULL },
-	[0x39] = { "ADD HL, SP -0HC", 1, 8, NULL },
-	[0x3A] = { "LD A, [HL]", 1, 8, NULL },
-	[0x3B] = { "DEC SP", 1, 8, NULL },
-	[0x3C] = { "INC A Z0H-", 1, 4, NULL },
-	[0x3D] = { "DEC A Z1H-", 1, 4, NULL },
-	[0x3E] = { "LD A, n8", 2, 8, NULL },
-	[0x3F] = { "CCF -00C", 1, 4, NULL },
-	[0x40] = { "LD B, B", 1, 4, NULL },
-	[0x41] = { "LD B, C", 1, 4, NULL },
-	[0x42] = { "LD B, D", 1, 4, NULL },
-	[0x43] = { "LD B, E", 1, 4, NULL },
-	[0x44] = { "LD B, H", 1, 4, NULL },
-	[0x45] = { "LD B, L", 1, 4, NULL },
-	[0x46] = { "LD B, [HL]", 1, 8, NULL },
-	[0x47] = { "LD B, A", 1, 4, NULL },
-	[0x48] = { "LD C, B", 1, 4, NULL },
-	[0x49] = { "LD C, C", 1, 4, NULL },
-	[0x4A] = { "LD C, D", 1, 4, NULL },
-	[0x4B] = { "LD C, E", 1, 4, NULL },
-	[0x4C] = { "LD C, H", 1, 4, NULL },
-	[0x4D] = { "LD C, L", 1, 4, NULL },
-	[0x4E] = { "LD C, [HL]", 1, 8, NULL },
-	[0x4F] = { "LD C, A", 1, 4, NULL },
-	[0x50] = { "LD D, B", 1, 4, NULL },
-	[0x51] = { "LD D, C", 1, 4, NULL },
-	[0x52] = { "LD D, D", 1, 4, NULL },
-	[0x53] = { "LD D, E", 1, 4, NULL },
-	[0x54] = { "LD D, H", 1, 4, NULL },
-	[0x55] = { "LD D, L", 1, 4, NULL },
-	[0x56] = { "LD D, [HL]", 1, 8, NULL },
-	[0x57] = { "LD D, A", 1, 4, NULL },
-	[0x58] = { "LD E, B", 1, 4, NULL },
-	[0x59] = { "LD E, C", 1, 4, NULL },
-	[0x5A] = { "LD E, D", 1, 4, NULL },
-	[0x5B] = { "LD E, E", 1, 4, NULL },
-	[0x5C] = { "LD E, H", 1, 4, NULL },
-	[0x5D] = { "LD E, L", 1, 4, NULL },
-	[0x5E] = { "LD E, [HL]", 1, 8, NULL },
-	[0x5F] = { "LD E, A", 1, 4, NULL },
-	[0x60] = { "LD H, B", 1, 4, NULL },
-	[0x61] = { "LD H, C", 1, 4, NULL },
-	[0x62] = { "LD H, D", 1, 4, NULL },
-	[0x63] = { "LD H, E", 1, 4, NULL },
-	[0x64] = { "LD H, H", 1, 4, NULL },
-	[0x65] = { "LD H, L", 1, 4, NULL },
-	[0x66] = { "LD H, [HL]", 1, 8, NULL },
-	[0x67] = { "LD H, A", 1, 4, NULL },
-	[0x68] = { "LD L, B", 1, 4, NULL },
-	[0x69] = { "LD L, C", 1, 4, NULL },
-	[0x6A] = { "LD L, D", 1, 4, NULL },
-	[0x6B] = { "LD L, E", 1, 4, NULL },
-	[0x6C] = { "LD L, H", 1, 4, NULL },
-	[0x6D] = { "LD L, L", 1, 4, NULL },
-	[0x6E] = { "LD L, [HL]", 1, 8, NULL },
-	[0x6F] = { "LD L, A", 1, 4, NULL },
-	[0x70] = { "LD [HL], B", 1, 8, NULL },
-	[0x71] = { "LD [HL], C", 1, 8, NULL },
-	[0x72] = { "LD [HL], D", 1, 8, NULL },
-	[0x73] = { "LD [HL], E", 1, 8, NULL },
-	[0x74] = { "LD [HL], H", 1, 8, NULL },
-	[0x75] = { "LD [HL], L", 1, 8, NULL },
-	[0x76] = { "HALT", 1, 4, NULL },
-	[0x77] = { "LD [HL], A", 1, 8, NULL },
-	[0x78] = { "LD A, B", 1, 4, NULL },
-	[0x79] = { "LD A, C", 1, 4, NULL },
-	[0x7A] = { "LD A, D", 1, 4, NULL },
-	[0x7B] = { "LD A, E", 1, 4, NULL },
-	[0x7C] = { "LD A, H", 1, 4, NULL },
-	[0x7D] = { "LD A, L", 1, 4, NULL },
-	[0x7E] = { "LD A, [HL]", 1, 8, NULL },
-	[0x7F] = { "LD A, A", 1, 4, NULL },
-	[0x80] = { "ADD A, B Z0HC", 1, 4, NULL },
-	[0x81] = { "ADD A, C Z0HC", 1, 4, NULL },
-	[0x82] = { "ADD A, D Z0HC", 1, 4, NULL },
-	[0x83] = { "ADD A, E Z0HC", 1, 4, NULL },
-	[0x84] = { "ADD A, H Z0HC", 1, 4, NULL },
-	[0x85] = { "ADD A, L Z0HC", 1, 4, NULL },
-	[0x86] = { "ADD A, [HL] Z0HC", 1, 8, NULL },
-	[0x87] = { "ADD A, A Z0HC", 1, 4, NULL },
-	[0x88] = { "ADC A, B Z0HC", 1, 4, NULL },
-	[0x89] = { "ADC A, C Z0HC", 1, 4, NULL },
-	[0x8A] = { "ADC A, D Z0HC", 1, 4, NULL },
-	[0x8B] = { "ADC A, E Z0HC", 1, 4, NULL },
-	[0x8C] = { "ADC A, H Z0HC", 1, 4, NULL },
-	[0x8D] = { "ADC A, L Z0HC", 1, 4, NULL },
-	[0x8E] = { "ADC A, [HL] Z0HC", 1, 8, NULL },
-	[0x8F] = { "ADC A, A Z0HC", 1, 4, NULL },
-	[0x90] = { "SUB A, B Z1HC", 1, 4, NULL },
-	[0x91] = { "SUB A, C Z1HC", 1, 4, NULL },
-	[0x92] = { "SUB A, D Z1HC", 1, 4, NULL },
-	[0x93] = { "SUB A, E Z1HC", 1, 4, NULL },
-	[0x94] = { "SUB A, H Z1HC", 1, 4, NULL },
-	[0x95] = { "SUB A, L Z1HC", 1, 4, NULL },
-	[0x96] = { "SUB A, [HL] Z1HC", 1, 8, NULL },
-	[0x97] = { "SUB A, A 1100", 1, 4, NULL },
-	[0x98] = { "SBC A, B Z1HC", 1, 4, NULL },
-	[0x99] = { "SBC A, C Z1HC", 1, 4, NULL },
-	[0x9A] = { "SBC A, D Z1HC", 1, 4, NULL },
-	[0x9B] = { "SBC A, E Z1HC", 1, 4, NULL },
-	[0x9C] = { "SBC A, H Z1HC", 1, 4, NULL },
-	[0x9D] = { "SBC A, L Z1HC", 1, 4, NULL },
-	[0x9E] = { "SBC A, [HL] Z1HC", 1, 8, NULL },
-	[0x9F] = { "SBC A, A Z1H-", 1, 4, NULL },
-	[0xA0] = { "AND A, B Z010", 1, 4, NULL },
-	[0xA1] = { "AND A, C Z010", 1, 4, NULL },
-	[0xA2] = { "AND A, D Z010", 1, 4, NULL },
-	[0xA3] = { "AND A, E Z010", 1, 4, NULL },
-	[0xA4] = { "AND A, H Z010", 1, 4, NULL },
-	[0xA5] = { "AND A, L Z010", 1, 4, NULL },
-	[0xA6] = { "AND A, [HL] Z010", 1, 8, NULL },
-	[0xA7] = { "AND A, A Z010", 1, 4, NULL },
-	[0xA8] = { "XOR A, B Z000", 1, 4, NULL },
-	[0xA9] = { "XOR A, C Z000", 1, 4, NULL },
-	[0xAA] = { "XOR A, D Z000", 1, 4, NULL },
-	[0xAB] = { "XOR A, E Z000", 1, 4, NULL },
-	[0xAC] = { "XOR A, H Z000", 1, 4, NULL },
-	[0xAD] = { "XOR A, L Z000", 1, 4, NULL },
-	[0xAE] = { "XOR A, [HL] Z000", 1, 8, NULL },
-	[0xAF] = { "XOR A, A 1000", 1, 4, NULL },
-	[0xB0] = { "OR A, B Z000", 1, 4, NULL },
-	[0xB1] = { "OR A, C Z000", 1, 4, NULL },
-	[0xB2] = { "OR A, D Z000", 1, 4, NULL },
-	[0xB3] = { "OR A, E Z000", 1, 4, NULL },
-	[0xB4] = { "OR A, H Z000", 1, 4, NULL },
-	[0xB5] = { "OR A, L Z000", 1, 4, NULL },
-	[0xB6] = { "OR A, [HL] Z000", 1, 8, NULL },
-	[0xB7] = { "OR A, A Z000", 1, 4, NULL },
-	[0xB8] = { "CP A, B Z1HC", 1, 4, NULL },
-	[0xB9] = { "CP A, C Z1HC", 1, 4, NULL },
-	[0xBA] = { "CP A, D Z1HC", 1, 4, NULL },
-	[0xBB] = { "CP A, E Z1HC", 1, 4, NULL },
-	[0xBC] = { "CP A, H Z1HC", 1, 4, NULL },
-	[0xBD] = { "CP A, L Z1HC", 1, 4, NULL },
-	[0xBE] = { "CP A, [HL] Z1HC", 1, 8, NULL },
-	[0xBF] = { "CP A, A 1100", 1, 4, NULL },
-	[0xC0] = { "RET NZ", 1, 20, NULL },
-	[0xC1] = { "POP BC", 1, 12, NULL },
-	[0xC2] = { "JP NZ, a16", 3, 16, NULL },
-	[0xC3] = { "JP a16", 3, 16, NULL },
-	[0xC4] = { "CALL NZ, a16", 3, 24, NULL },
-	[0xC5] = { "PUSH BC", 1, 16, NULL },
-	[0xC6] = { "ADD A, n8 Z0HC", 2, 8, NULL },
-	[0xC7] = { "RST $00", 1, 16, NULL },
-	[0xC8] = { "RET Z", 1, 20, NULL },
-	[0xC9] = { "RET", 1, 16, NULL },
-	[0xCA] = { "JP Z, a16", 3, 16, NULL },
-	[0xCB] = { "PREFIX", 1, 4, NULL },
-	[0xCC] = { "CALL Z, a16", 3, 24, NULL },
-	[0xCD] = { "CALL a16", 3, 24, NULL },
-	[0xCE] = { "ADC A, n8 Z0HC", 2, 8, NULL },
-	[0xCF] = { "RST $08", 1, 16, NULL },
-	[0xD0] = { "RET NC", 1, 20, NULL },
-	[0xD1] = { "POP DE", 1, 12, NULL },
-	[0xD2] = { "JP NC, a16", 3, 16, NULL },
-	[0xD3] = { "ILLEGAL_D3", 1, 4, NULL },
-	[0xD4] = { "CALL NC, a16", 3, 24, NULL },
-	[0xD5] = { "PUSH DE", 1, 16, NULL },
-	[0xD6] = { "SUB A, n8 Z1HC", 2, 8, NULL },
-	[0xD7] = { "RST $10", 1, 16, NULL },
-	[0xD8] = { "RET C", 1, 20, NULL },
-	[0xD9] = { "RETI", 1, 16, NULL },
-	[0xDA] = { "JP C, a16", 3, 16, NULL },
-	[0xDB] = { "ILLEGAL_DB", 1, 4, NULL },
-	[0xDC] = { "CALL C, a16", 3, 24, NULL },
-	[0xDD] = { "ILLEGAL_DD", 1, 4, NULL },
-	[0xDE] = { "SBC A, n8 Z1HC", 2, 8, NULL },
-	[0xDF] = { "RST $18", 1, 16, NULL },
-	[0xE0] = { "LDH [a8], A", 2, 12, NULL },
-	[0xE1] = { "POP HL", 1, 12, NULL },
-	[0xE2] = { "LDH [C], A", 1, 8, NULL },
-	[0xE3] = { "ILLEGAL_E3", 1, 4, NULL },
-	[0xE4] = { "ILLEGAL_E4", 1, 4, NULL },
-	[0xE5] = { "PUSH HL", 1, 16, NULL },
-	[0xE6] = { "AND A, n8 Z010", 2, 8, NULL },
-	[0xE7] = { "RST $20", 1, 16, NULL },
-	[0xE8] = { "ADD SP, e8 00HC", 2, 16, NULL },
-	[0xE9] = { "JP HL", 1, 4, NULL },
-	[0xEA] = { "LD [a16], A", 3, 16, NULL },
-	[0xEB] = { "ILLEGAL_EB", 1, 4, NULL },
-	[0xEC] = { "ILLEGAL_EC", 1, 4, NULL },
-	[0xED] = { "ILLEGAL_ED", 1, 4, NULL },
-	[0xEE] = { "XOR A, n8 Z000", 2, 8, NULL },
-	[0xEF] = { "RST $28", 1, 16, NULL },
-	[0xF0] = { "LDH A, [a8]", 2, 12, NULL },
-	[0xF1] = { "POP AF ZNHC", 1, 12, NULL },
-	[0xF2] = { "LDH A, [C]", 1, 8, NULL },
-	[0xF3] = { "DI", 1, 4, op_di },
-	[0xF4] = { "ILLEGAL_F4", 1, 4, NULL },
-	[0xF5] = { "PUSH AF", 1, 16, NULL },
-	[0xF6] = { "OR A, n8 Z000", 2, 8, NULL },
-	[0xF7] = { "RST $30", 1, 16, NULL },
-	[0xF8] = { "LD HL, SP, e8 00HC", 2, 12, NULL },
-	[0xF9] = { "LD SP, HL", 1, 8, NULL },
-	[0xFA] = { "LD A, [a16]", 3, 16, NULL },
-	[0xFB] = { "EI", 1, 4, NULL },
-	[0xFC] = { "ILLEGAL_FC", 1, 4, NULL },
-	[0xFD] = { "ILLEGAL_FD", 1, 4, NULL },
-	[0xFE] = { "CP A, n8 Z1HC", 2, 8, NULL },
-	[0xFF] = { "RST $38", 1, 16, NULL },
-};
+uint8_t op_noop(struct CPU *cpu) //0x00
+{
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_jr_NZ_e8(struct CPU *cpu) //0x20
+{
+	int8_t e8 = cpu->rom[cpu->pc++];
+	if (cpu->fZ) {
+		fprintf(stderr, "NZ false %08b ", cpu->f);
+		return cpu->instr->dots[1];
+	}
+	fprintf(stderr, "NZ TRUE %08b", cpu->f);
+	cpu->pc += e8;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_HL_n16(struct CPU *cpu) //0x21
+{
+	cpu->hl = ld_le16(cpu->rom + cpu->pc);
+	cpu->pc += 2;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_sp_n16(struct CPU *cpu) //0x31
+{
+	cpu->sp = ld_le16(cpu->rom + cpu->pc);
+	cpu->pc += 2;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_A_n8(struct CPU *cpu) //0x3e
+{
+	cpu->a = cpu->rom[cpu->pc++];
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_or_A_A(struct CPU *cpu) //0xb7
+{
+	cpu->a |= cpu->a;
+	cpu->f = 0;
+	cpu->fZ = cpu->a == 0 ? 1 : 0;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ret_NZ(struct CPU *cpu) //0xc0
+{
+	fprintf(stderr, "fZ=%b ", cpu->fZ);
+	if (cpu->fZ) {
+		fprintf(stderr, "fZ == 1 NZ=FALSE ");
+		return cpu->instr->dots[1];
+	}
+	fprintf(stderr, "fZ == 0 NZ=TRUE ");
+	cpu->pc = ld_le16(cpu->rom + cpu->sp);
+	cpu->sp += 2;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ret_Z(struct CPU *cpu) //0xc8
+{
+	fprintf(stderr, "fZ=%b ", cpu->fZ);
+	if (!cpu->fZ) {
+		fprintf(stderr, "fZ == 0 FALSE ");
+		return cpu->instr->dots[1];
+	}
+	fprintf(stderr, "fZ == 0 TRUE ");
+	cpu->pc = ld_le16(cpu->rom + cpu->sp);
+	cpu->sp += 2;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_call_a16(struct CPU *cpu) //0xcd
+{
+	int16_t a16 = ld_le16(cpu->rom + cpu->pc);
+	cpu->pc += 2;
+	cpu->sp -= 2;
+	wr_le16(cpu->rom + cpu->sp, cpu->pc);
+
+	fprintf(stderr, "pc=0x%04x a16=0x%04x [sp] 0x%04x (0x%04x)", cpu->pc,
+		a16, *(uint16_t *)(cpu->rom + cpu->sp),
+		*(uint16_t *)(&cpu->rom[cpu->sp]));
+
+	cpu->pc = a16;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_$a16_A(struct CPU *cpu) //0xea
+{
+	int16_t a16 = ld_le16(cpu->rom + cpu->pc);
+	cpu->pc += 2;
+	cpu->rom[a16] = cpu->a;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_di(struct CPU *cpu) //0xf3
+{
+	cpu->ime = false;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_A_$a16(struct CPU *cpu) //0xfa
+{
+	int16_t a16 = ld_le16(cpu->rom + cpu->pc);
+	cpu->pc += 2;
+	fprintf(stderr, "-> a 0x%02x ", cpu->a);
+	cpu->a = cpu->rom[a16];
+	fprintf(stderr, "-> 0x%02x ", cpu->a);
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_cp_A_n8(struct CPU *cpu) //0xfe
+{
+	uint8_t n8 = cpu->rom[cpu->pc++];
+	cpu->fZ = cpu->a == n8;
+	cpu->fN = 1;
+	cpu->fH = (cpu->a & 0x0f) < (n8 & 0x0f); //lsb a lt lsb n8
+	cpu->fC = cpu->a < n8;
+	fprintf(stderr, "-> a=0x%02x n8=0x%02x F=0b%08b ", cpu->a, n8, cpu->f);
+	return cpu->instr->dots[0];
+}
+
+static inline void set_u3_$HL(uint8_t *dest, uint8_t n)
+{
+	fprintf(stderr, "[HL] 0b%08b ", *dest);
+	*dest |= (1U << n);
+	fprintf(stderr, "0b%08b ", *dest);
+}
+
+uint8_t cb_set_0_$HL(struct CPU *cpu) //0xc6
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 0);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_1_$HL(struct CPU *cpu) //0xce
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 1);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_2_$HL(struct CPU *cpu) //0xd6
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 2);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_3_$HL(struct CPU *cpu) //0xde
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 3);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_4_$HL(struct CPU *cpu) //0xe6
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 4);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_5_$HL(struct CPU *cpu) //0xee
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 5);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_6_$HL(struct CPU *cpu) //0xf6
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 6);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_7_$HL(struct CPU *cpu) //0xfe
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 7);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_bit_7_$HL(struct CPU *cpu) //0x7e
+{
+	uint8_t $hl = cpu->rom[cpu->hl];
+	cpu->fZ = !($hl & 0x80);
+	cpu->fN = 0;
+	cpu->fH = 1;
+	fprintf(stderr, "[HL] 0b%08b f 0b%08b", $hl, cpu->f);
+	return cpu->instr->dots[0];
+}
 
 struct instr cbtbl[256] = {
-	[0x00] = { "RLC B Z00C", 2, 8, NULL },
-	[0x01] = { "RLC C Z00C", 2, 8, NULL },
-	[0x02] = { "RLC D Z00C", 2, 8, NULL },
-	[0x03] = { "RLC E Z00C", 2, 8, NULL },
-	[0x04] = { "RLC H Z00C", 2, 8, NULL },
-	[0x05] = { "RLC L Z00C", 2, 8, NULL },
-	[0x06] = { "RLC [HL] Z00C", 2, 16, NULL },
-	[0x07] = { "RLC A Z00C", 2, 8, NULL },
-	[0x08] = { "RRC B Z00C", 2, 8, NULL },
-	[0x09] = { "RRC C Z00C", 2, 8, NULL },
-	[0x0A] = { "RRC D Z00C", 2, 8, NULL },
-	[0x0B] = { "RRC E Z00C", 2, 8, NULL },
-	[0x0C] = { "RRC H Z00C", 2, 8, NULL },
-	[0x0D] = { "RRC L Z00C", 2, 8, NULL },
-	[0x0E] = { "RRC [HL] Z00C", 2, 16, NULL },
-	[0x0F] = { "RRC A Z00C", 2, 8, NULL },
-	[0x10] = { "RL B Z00C", 2, 8, NULL },
-	[0x11] = { "RL C Z00C", 2, 8, NULL },
-	[0x12] = { "RL D Z00C", 2, 8, NULL },
-	[0x13] = { "RL E Z00C", 2, 8, NULL },
-	[0x14] = { "RL H Z00C", 2, 8, NULL },
-	[0x15] = { "RL L Z00C", 2, 8, NULL },
-	[0x16] = { "RL [HL] Z00C", 2, 16, NULL },
-	[0x17] = { "RL A Z00C", 2, 8, NULL },
-	[0x18] = { "RR B Z00C", 2, 8, NULL },
-	[0x19] = { "RR C Z00C", 2, 8, NULL },
-	[0x1A] = { "RR D Z00C", 2, 8, NULL },
-	[0x1B] = { "RR E Z00C", 2, 8, NULL },
-	[0x1C] = { "RR H Z00C", 2, 8, NULL },
-	[0x1D] = { "RR L Z00C", 2, 8, NULL },
-	[0x1E] = { "RR [HL] Z00C", 2, 16, NULL },
-	[0x1F] = { "RR A Z00C", 2, 8, NULL },
-	[0x20] = { "SLA B Z00C", 2, 8, NULL },
-	[0x21] = { "SLA C Z00C", 2, 8, NULL },
-	[0x22] = { "SLA D Z00C", 2, 8, NULL },
-	[0x23] = { "SLA E Z00C", 2, 8, NULL },
-	[0x24] = { "SLA H Z00C", 2, 8, NULL },
-	[0x25] = { "SLA L Z00C", 2, 8, NULL },
-	[0x26] = { "SLA [HL] Z00C", 2, 16, NULL },
-	[0x27] = { "SLA A Z00C", 2, 8, NULL },
-	[0x28] = { "SRA B Z00C", 2, 8, NULL },
-	[0x29] = { "SRA C Z00C", 2, 8, NULL },
-	[0x2A] = { "SRA D Z00C", 2, 8, NULL },
-	[0x2B] = { "SRA E Z00C", 2, 8, NULL },
-	[0x2C] = { "SRA H Z00C", 2, 8, NULL },
-	[0x2D] = { "SRA L Z00C", 2, 8, NULL },
-	[0x2E] = { "SRA [HL] Z00C", 2, 16, NULL },
-	[0x2F] = { "SRA A Z00C", 2, 8, NULL },
-	[0x30] = { "SWAP B Z000", 2, 8, NULL },
-	[0x31] = { "SWAP C Z000", 2, 8, NULL },
-	[0x32] = { "SWAP D Z000", 2, 8, NULL },
-	[0x33] = { "SWAP E Z000", 2, 8, NULL },
-	[0x34] = { "SWAP H Z000", 2, 8, NULL },
-	[0x35] = { "SWAP L Z000", 2, 8, NULL },
-	[0x36] = { "SWAP [HL] Z000", 2, 16, NULL },
-	[0x37] = { "SWAP A Z000", 2, 8, NULL },
-	[0x38] = { "SRL B Z00C", 2, 8, NULL },
-	[0x39] = { "SRL C Z00C", 2, 8, NULL },
-	[0x3A] = { "SRL D Z00C", 2, 8, NULL },
-	[0x3B] = { "SRL E Z00C", 2, 8, NULL },
-	[0x3C] = { "SRL H Z00C", 2, 8, NULL },
-	[0x3D] = { "SRL L Z00C", 2, 8, NULL },
-	[0x3E] = { "SRL [HL] Z00C", 2, 16, NULL },
-	[0x3F] = { "SRL A Z00C", 2, 8, NULL },
-	[0x40] = { "BIT 0, B Z01-", 2, 8, NULL },
-	[0x41] = { "BIT 0, C Z01-", 2, 8, NULL },
-	[0x42] = { "BIT 0, D Z01-", 2, 8, NULL },
-	[0x43] = { "BIT 0, E Z01-", 2, 8, NULL },
-	[0x44] = { "BIT 0, H Z01-", 2, 8, NULL },
-	[0x45] = { "BIT 0, L Z01-", 2, 8, NULL },
-	[0x46] = { "BIT 0, [HL] Z01-", 2, 12, NULL },
-	[0x47] = { "BIT 0, A Z01-", 2, 8, NULL },
-	[0x48] = { "BIT 1, B Z01-", 2, 8, NULL },
-	[0x49] = { "BIT 1, C Z01-", 2, 8, NULL },
-	[0x4A] = { "BIT 1, D Z01-", 2, 8, NULL },
-	[0x4B] = { "BIT 1, E Z01-", 2, 8, NULL },
-	[0x4C] = { "BIT 1, H Z01-", 2, 8, NULL },
-	[0x4D] = { "BIT 1, L Z01-", 2, 8, NULL },
-	[0x4E] = { "BIT 1, [HL] Z01-", 2, 12, NULL },
-	[0x4F] = { "BIT 1, A Z01-", 2, 8, NULL },
-	[0x50] = { "BIT 2, B Z01-", 2, 8, NULL },
-	[0x51] = { "BIT 2, C Z01-", 2, 8, NULL },
-	[0x52] = { "BIT 2, D Z01-", 2, 8, NULL },
-	[0x53] = { "BIT 2, E Z01-", 2, 8, NULL },
-	[0x54] = { "BIT 2, H Z01-", 2, 8, NULL },
-	[0x55] = { "BIT 2, L Z01-", 2, 8, NULL },
-	[0x56] = { "BIT 2, [HL] Z01-", 2, 12, NULL },
-	[0x57] = { "BIT 2, A Z01-", 2, 8, NULL },
-	[0x58] = { "BIT 3, B Z01-", 2, 8, NULL },
-	[0x59] = { "BIT 3, C Z01-", 2, 8, NULL },
-	[0x5A] = { "BIT 3, D Z01-", 2, 8, NULL },
-	[0x5B] = { "BIT 3, E Z01-", 2, 8, NULL },
-	[0x5C] = { "BIT 3, H Z01-", 2, 8, NULL },
-	[0x5D] = { "BIT 3, L Z01-", 2, 8, NULL },
-	[0x5E] = { "BIT 3, [HL] Z01-", 2, 12, NULL },
-	[0x5F] = { "BIT 3, A Z01-", 2, 8, NULL },
-	[0x60] = { "BIT 4, B Z01-", 2, 8, NULL },
-	[0x61] = { "BIT 4, C Z01-", 2, 8, NULL },
-	[0x62] = { "BIT 4, D Z01-", 2, 8, NULL },
-	[0x63] = { "BIT 4, E Z01-", 2, 8, NULL },
-	[0x64] = { "BIT 4, H Z01-", 2, 8, NULL },
-	[0x65] = { "BIT 4, L Z01-", 2, 8, NULL },
-	[0x66] = { "BIT 4, [HL] Z01-", 2, 12, NULL },
-	[0x67] = { "BIT 4, A Z01-", 2, 8, NULL },
-	[0x68] = { "BIT 5, B Z01-", 2, 8, NULL },
-	[0x69] = { "BIT 5, C Z01-", 2, 8, NULL },
-	[0x6A] = { "BIT 5, D Z01-", 2, 8, NULL },
-	[0x6B] = { "BIT 5, E Z01-", 2, 8, NULL },
-	[0x6C] = { "BIT 5, H Z01-", 2, 8, NULL },
-	[0x6D] = { "BIT 5, L Z01-", 2, 8, NULL },
-	[0x6E] = { "BIT 5, [HL] Z01-", 2, 12, NULL },
-	[0x6F] = { "BIT 5, A Z01-", 2, 8, NULL },
-	[0x70] = { "BIT 6, B Z01-", 2, 8, NULL },
-	[0x71] = { "BIT 6, C Z01-", 2, 8, NULL },
-	[0x72] = { "BIT 6, D Z01-", 2, 8, NULL },
-	[0x73] = { "BIT 6, E Z01-", 2, 8, NULL },
-	[0x74] = { "BIT 6, H Z01-", 2, 8, NULL },
-	[0x75] = { "BIT 6, L Z01-", 2, 8, NULL },
-	[0x76] = { "BIT 6, [HL] Z01-", 2, 12, NULL },
-	[0x77] = { "BIT 6, A Z01-", 2, 8, NULL },
-	[0x78] = { "BIT 7, B Z01-", 2, 8, NULL },
-	[0x79] = { "BIT 7, C Z01-", 2, 8, NULL },
-	[0x7A] = { "BIT 7, D Z01-", 2, 8, NULL },
-	[0x7B] = { "BIT 7, E Z01-", 2, 8, NULL },
-	[0x7C] = { "BIT 7, H Z01-", 2, 8, NULL },
-	[0x7D] = { "BIT 7, L Z01-", 2, 8, NULL },
-	[0x7E] = { "BIT 7, [HL] Z01-", 2, 12, NULL },
-	[0x7F] = { "BIT 7, A Z01-", 2, 8, NULL },
-	[0x80] = { "RES 0, B", 2, 8, NULL },
-	[0x81] = { "RES 0, C", 2, 8, NULL },
-	[0x82] = { "RES 0, D", 2, 8, NULL },
-	[0x83] = { "RES 0, E", 2, 8, NULL },
-	[0x84] = { "RES 0, H", 2, 8, NULL },
-	[0x85] = { "RES 0, L", 2, 8, NULL },
-	[0x86] = { "RES 0, [HL]", 2, 16, NULL },
-	[0x87] = { "RES 0, A", 2, 8, NULL },
-	[0x88] = { "RES 1, B", 2, 8, NULL },
-	[0x89] = { "RES 1, C", 2, 8, NULL },
-	[0x8A] = { "RES 1, D", 2, 8, NULL },
-	[0x8B] = { "RES 1, E", 2, 8, NULL },
-	[0x8C] = { "RES 1, H", 2, 8, NULL },
-	[0x8D] = { "RES 1, L", 2, 8, NULL },
-	[0x8E] = { "RES 1, [HL]", 2, 16, NULL },
-	[0x8F] = { "RES 1, A", 2, 8, NULL },
-	[0x90] = { "RES 2, B", 2, 8, NULL },
-	[0x91] = { "RES 2, C", 2, 8, NULL },
-	[0x92] = { "RES 2, D", 2, 8, NULL },
-	[0x93] = { "RES 2, E", 2, 8, NULL },
-	[0x94] = { "RES 2, H", 2, 8, NULL },
-	[0x95] = { "RES 2, L", 2, 8, NULL },
-	[0x96] = { "RES 2, [HL]", 2, 16, NULL },
-	[0x97] = { "RES 2, A", 2, 8, NULL },
-	[0x98] = { "RES 3, B", 2, 8, NULL },
-	[0x99] = { "RES 3, C", 2, 8, NULL },
-	[0x9A] = { "RES 3, D", 2, 8, NULL },
-	[0x9B] = { "RES 3, E", 2, 8, NULL },
-	[0x9C] = { "RES 3, H", 2, 8, NULL },
-	[0x9D] = { "RES 3, L", 2, 8, NULL },
-	[0x9E] = { "RES 3, [HL]", 2, 16, NULL },
-	[0x9F] = { "RES 3, A", 2, 8, NULL },
-	[0xA0] = { "RES 4, B", 2, 8, NULL },
-	[0xA1] = { "RES 4, C", 2, 8, NULL },
-	[0xA2] = { "RES 4, D", 2, 8, NULL },
-	[0xA3] = { "RES 4, E", 2, 8, NULL },
-	[0xA4] = { "RES 4, H", 2, 8, NULL },
-	[0xA5] = { "RES 4, L", 2, 8, NULL },
-	[0xA6] = { "RES 4, [HL]", 2, 16, NULL },
-	[0xA7] = { "RES 4, A", 2, 8, NULL },
-	[0xA8] = { "RES 5, B", 2, 8, NULL },
-	[0xA9] = { "RES 5, C", 2, 8, NULL },
-	[0xAA] = { "RES 5, D", 2, 8, NULL },
-	[0xAB] = { "RES 5, E", 2, 8, NULL },
-	[0xAC] = { "RES 5, H", 2, 8, NULL },
-	[0xAD] = { "RES 5, L", 2, 8, NULL },
-	[0xAE] = { "RES 5, [HL]", 2, 16, NULL },
-	[0xAF] = { "RES 5, A", 2, 8, NULL },
-	[0xB0] = { "RES 6, B", 2, 8, NULL },
-	[0xB1] = { "RES 6, C", 2, 8, NULL },
-	[0xB2] = { "RES 6, D", 2, 8, NULL },
-	[0xB3] = { "RES 6, E", 2, 8, NULL },
-	[0xB4] = { "RES 6, H", 2, 8, NULL },
-	[0xB5] = { "RES 6, L", 2, 8, NULL },
-	[0xB6] = { "RES 6, [HL]", 2, 16, NULL },
-	[0xB7] = { "RES 6, A", 2, 8, NULL },
-	[0xB8] = { "RES 7, B", 2, 8, NULL },
-	[0xB9] = { "RES 7, C", 2, 8, NULL },
-	[0xBA] = { "RES 7, D", 2, 8, NULL },
-	[0xBB] = { "RES 7, E", 2, 8, NULL },
-	[0xBC] = { "RES 7, H", 2, 8, NULL },
-	[0xBD] = { "RES 7, L", 2, 8, NULL },
-	[0xBE] = { "RES 7, [HL]", 2, 16, NULL },
-	[0xBF] = { "RES 7, A", 2, 8, NULL },
-	[0xC0] = { "SET 0, B", 2, 8, NULL },
-	[0xC1] = { "SET 0, C", 2, 8, NULL },
-	[0xC2] = { "SET 0, D", 2, 8, NULL },
-	[0xC3] = { "SET 0, E", 2, 8, NULL },
-	[0xC4] = { "SET 0, H", 2, 8, NULL },
-	[0xC5] = { "SET 0, L", 2, 8, NULL },
-	[0xC6] = { "SET 0, [HL]", 2, 16, NULL },
-	[0xC7] = { "SET 0, A", 2, 8, NULL },
-	[0xC8] = { "SET 1, B", 2, 8, NULL },
-	[0xC9] = { "SET 1, C", 2, 8, NULL },
-	[0xCA] = { "SET 1, D", 2, 8, NULL },
-	[0xCB] = { "SET 1, E", 2, 8, NULL },
-	[0xCC] = { "SET 1, H", 2, 8, NULL },
-	[0xCD] = { "SET 1, L", 2, 8, NULL },
-	[0xCE] = { "SET 1, [HL]", 2, 16, NULL },
-	[0xCF] = { "SET 1, A", 2, 8, NULL },
-	[0xD0] = { "SET 2, B", 2, 8, NULL },
-	[0xD1] = { "SET 2, C", 2, 8, NULL },
-	[0xD2] = { "SET 2, D", 2, 8, NULL },
-	[0xD3] = { "SET 2, E", 2, 8, NULL },
-	[0xD4] = { "SET 2, H", 2, 8, NULL },
-	[0xD5] = { "SET 2, L", 2, 8, NULL },
-	[0xD6] = { "SET 2, [HL]", 2, 16, NULL },
-	[0xD7] = { "SET 2, A", 2, 8, NULL },
-	[0xD8] = { "SET 3, B", 2, 8, NULL },
-	[0xD9] = { "SET 3, C", 2, 8, NULL },
-	[0xDA] = { "SET 3, D", 2, 8, NULL },
-	[0xDB] = { "SET 3, E", 2, 8, NULL },
-	[0xDC] = { "SET 3, H", 2, 8, NULL },
-	[0xDD] = { "SET 3, L", 2, 8, NULL },
-	[0xDE] = { "SET 3, [HL]", 2, 16, NULL },
-	[0xDF] = { "SET 3, A", 2, 8, NULL },
-	[0xE0] = { "SET 4, B", 2, 8, NULL },
-	[0xE1] = { "SET 4, C", 2, 8, NULL },
-	[0xE2] = { "SET 4, D", 2, 8, NULL },
-	[0xE3] = { "SET 4, E", 2, 8, NULL },
-	[0xE4] = { "SET 4, H", 2, 8, NULL },
-	[0xE5] = { "SET 4, L", 2, 8, NULL },
-	[0xE6] = { "SET 4, [HL]", 2, 16, NULL },
-	[0xE7] = { "SET 4, A", 2, 8, NULL },
-	[0xE8] = { "SET 5, B", 2, 8, NULL },
-	[0xE9] = { "SET 5, C", 2, 8, NULL },
-	[0xEA] = { "SET 5, D", 2, 8, NULL },
-	[0xEB] = { "SET 5, E", 2, 8, NULL },
-	[0xEC] = { "SET 5, H", 2, 8, NULL },
-	[0xED] = { "SET 5, L", 2, 8, NULL },
-	[0xEE] = { "SET 5, [HL]", 2, 16, NULL },
-	[0xEF] = { "SET 5, A", 2, 8, NULL },
-	[0xF0] = { "SET 6, B", 2, 8, NULL },
-	[0xF1] = { "SET 6, C", 2, 8, NULL },
-	[0xF2] = { "SET 6, D", 2, 8, NULL },
-	[0xF3] = { "SET 6, E", 2, 8, NULL },
-	[0xF4] = { "SET 6, H", 2, 8, NULL },
-	[0xF5] = { "SET 6, L", 2, 8, NULL },
-	[0xF6] = { "SET 6, [HL]", 2, 16, NULL },
-	[0xF7] = { "SET 6, A", 2, 8, NULL },
-	[0xF8] = { "SET 7, B", 2, 8, NULL },
-	[0xF9] = { "SET 7, C", 2, 8, NULL },
-	[0xFA] = { "SET 7, D", 2, 8, NULL },
-	[0xFB] = { "SET 7, E", 2, 8, NULL },
-	[0xFC] = { "SET 7, H", 2, 8, NULL },
-	[0xFD] = { "SET 7, L", 2, 8, NULL },
-	[0xFE] = { "SET 7, [HL]", 2, 16, NULL },
-	[0xFF] = { "SET 7, A", 2, 8, NULL },
+	[0x00] = { "*** cb RLC B 2,8 Z00C", NULL, 2, { 8, 8 }, 0x00 },
+	[0x01] = { "*** cb RLC C 2,8 Z00C", NULL, 2, { 8, 8 }, 0x01 },
+	[0x02] = { "*** cb RLC D 2,8 Z00C", NULL, 2, { 8, 8 }, 0x02 },
+	[0x03] = { "*** cb RLC E 2,8 Z00C", NULL, 2, { 8, 8 }, 0x03 },
+	[0x04] = { "*** cb RLC H 2,8 Z00C", NULL, 2, { 8, 8 }, 0x04 },
+	[0x05] = { "*** cb RLC L 2,8 Z00C", NULL, 2, { 8, 8 }, 0x05 },
+	[0x06] = { "*** cb RLC [HL] 2,16 Z00C", NULL, 2, { 16, 16 }, 0x06 },
+	[0x07] = { "*** cb RLC A 2,8 Z00C", NULL, 2, { 8, 8 }, 0x07 },
+	[0x08] = { "*** cb RRC B 2,8 Z00C", NULL, 2, { 8, 8 }, 0x08 },
+	[0x09] = { "*** cb RRC C 2,8 Z00C", NULL, 2, { 8, 8 }, 0x09 },
+	[0x0A] = { "*** cb RRC D 2,8 Z00C", NULL, 2, { 8, 8 }, 0x0A },
+	[0x0B] = { "*** cb RRC E 2,8 Z00C", NULL, 2, { 8, 8 }, 0x0B },
+	[0x0C] = { "*** cb RRC H 2,8 Z00C", NULL, 2, { 8, 8 }, 0x0C },
+	[0x0D] = { "*** cb RRC L 2,8 Z00C", NULL, 2, { 8, 8 }, 0x0D },
+	[0x0E] = { "*** cb RRC [HL] 2,16 Z00C", NULL, 2, { 16, 16 }, 0x0E },
+	[0x0F] = { "*** cb RRC A 2,8 Z00C", NULL, 2, { 8, 8 }, 0x0F },
+	[0x10] = { "*** cb RL B 2,8 Z00C", NULL, 2, { 8, 8 }, 0x10 },
+	[0x11] = { "*** cb RL C 2,8 Z00C", NULL, 2, { 8, 8 }, 0x11 },
+	[0x12] = { "*** cb RL D 2,8 Z00C", NULL, 2, { 8, 8 }, 0x12 },
+	[0x13] = { "*** cb RL E 2,8 Z00C", NULL, 2, { 8, 8 }, 0x13 },
+	[0x14] = { "*** cb RL H 2,8 Z00C", NULL, 2, { 8, 8 }, 0x14 },
+	[0x15] = { "*** cb RL L 2,8 Z00C", NULL, 2, { 8, 8 }, 0x15 },
+	[0x16] = { "*** cb RL [HL] 2,16 Z00C", NULL, 2, { 16, 16 }, 0x16 },
+	[0x17] = { "*** cb RL A 2,8 Z00C", NULL, 2, { 8, 8 }, 0x17 },
+	[0x18] = { "*** cb RR B 2,8 Z00C", NULL, 2, { 8, 8 }, 0x18 },
+	[0x19] = { "*** cb RR C 2,8 Z00C", NULL, 2, { 8, 8 }, 0x19 },
+	[0x1A] = { "*** cb RR D 2,8 Z00C", NULL, 2, { 8, 8 }, 0x1A },
+	[0x1B] = { "*** cb RR E 2,8 Z00C", NULL, 2, { 8, 8 }, 0x1B },
+	[0x1C] = { "*** cb RR H 2,8 Z00C", NULL, 2, { 8, 8 }, 0x1C },
+	[0x1D] = { "*** cb RR L 2,8 Z00C", NULL, 2, { 8, 8 }, 0x1D },
+	[0x1E] = { "*** cb RR [HL] 2,16 Z00C", NULL, 2, { 16, 16 }, 0x1E },
+	[0x1F] = { "*** cb RR A 2,8 Z00C", NULL, 2, { 8, 8 }, 0x1F },
+	[0x20] = { "*** cb SLA B 2,8 Z00C", NULL, 2, { 8, 8 }, 0x20 },
+	[0x21] = { "*** cb SLA C 2,8 Z00C", NULL, 2, { 8, 8 }, 0x21 },
+	[0x22] = { "*** cb SLA D 2,8 Z00C", NULL, 2, { 8, 8 }, 0x22 },
+	[0x23] = { "*** cb SLA E 2,8 Z00C", NULL, 2, { 8, 8 }, 0x23 },
+	[0x24] = { "*** cb SLA H 2,8 Z00C", NULL, 2, { 8, 8 }, 0x24 },
+	[0x25] = { "*** cb SLA L 2,8 Z00C", NULL, 2, { 8, 8 }, 0x25 },
+	[0x26] = { "*** cb SLA [HL] 2,16 Z00C", NULL, 2, { 16, 16 }, 0x26 },
+	[0x27] = { "*** cb SLA A 2,8 Z00C", NULL, 2, { 8, 8 }, 0x27 },
+	[0x28] = { "*** cb SRA B 2,8 Z00C", NULL, 2, { 8, 8 }, 0x28 },
+	[0x29] = { "*** cb SRA C 2,8 Z00C", NULL, 2, { 8, 8 }, 0x29 },
+	[0x2A] = { "*** cb SRA D 2,8 Z00C", NULL, 2, { 8, 8 }, 0x2A },
+	[0x2B] = { "*** cb SRA E 2,8 Z00C", NULL, 2, { 8, 8 }, 0x2B },
+	[0x2C] = { "*** cb SRA H 2,8 Z00C", NULL, 2, { 8, 8 }, 0x2C },
+	[0x2D] = { "*** cb SRA L 2,8 Z00C", NULL, 2, { 8, 8 }, 0x2D },
+	[0x2E] = { "*** cb SRA [HL] 2,16 Z00C", NULL, 2, { 16, 16 }, 0x2E },
+	[0x2F] = { "*** cb SRA A 2,8 Z00C", NULL, 2, { 8, 8 }, 0x2F },
+	[0x30] = { "*** cb SWAP B 2,8 Z000", NULL, 2, { 8, 8 }, 0x30 },
+	[0x31] = { "*** cb SWAP C 2,8 Z000", NULL, 2, { 8, 8 }, 0x31 },
+	[0x32] = { "*** cb SWAP D 2,8 Z000", NULL, 2, { 8, 8 }, 0x32 },
+	[0x33] = { "*** cb SWAP E 2,8 Z000", NULL, 2, { 8, 8 }, 0x33 },
+	[0x34] = { "*** cb SWAP H 2,8 Z000", NULL, 2, { 8, 8 }, 0x34 },
+	[0x35] = { "*** cb SWAP L 2,8 Z000", NULL, 2, { 8, 8 }, 0x35 },
+	[0x36] = { "*** cb SWAP [HL] 2,16 Z000", NULL, 2, { 16, 16 }, 0x36 },
+	[0x37] = { "*** cb SWAP A 2,8 Z000", NULL, 2, { 8, 8 }, 0x37 },
+	[0x38] = { "*** cb SRL B 2,8 Z00C", NULL, 2, { 8, 8 }, 0x38 },
+	[0x39] = { "*** cb SRL C 2,8 Z00C", NULL, 2, { 8, 8 }, 0x39 },
+	[0x3A] = { "*** cb SRL D 2,8 Z00C", NULL, 2, { 8, 8 }, 0x3A },
+	[0x3B] = { "*** cb SRL E 2,8 Z00C", NULL, 2, { 8, 8 }, 0x3B },
+	[0x3C] = { "*** cb SRL H 2,8 Z00C", NULL, 2, { 8, 8 }, 0x3C },
+	[0x3D] = { "*** cb SRL L 2,8 Z00C", NULL, 2, { 8, 8 }, 0x3D },
+	[0x3E] = { "*** cb SRL [HL] 2,16 Z00C", NULL, 2, { 16, 16 }, 0x3E },
+	[0x3F] = { "*** cb SRL A 2,8 Z00C", NULL, 2, { 8, 8 }, 0x3F },
+	[0x40] = { "*** cb BIT 0,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x40 },
+	[0x41] = { "*** cb BIT 0,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x41 },
+	[0x42] = { "*** cb BIT 0,D 2,8 Z01-", NULL, 2, { 8, 8 }, 0x42 },
+	[0x43] = { "*** cb BIT 0,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x43 },
+	[0x44] = { "*** cb BIT 0,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x44 },
+	[0x45] = { "*** cb BIT 0,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x45 },
+	[0x46] = { "*** cb BIT 0,[HL] 2,12 Z01-", NULL, 2, { 12, 12 }, 0x46 },
+	[0x47] = { "*** cb BIT 0,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x47 },
+	[0x48] = { "*** cb BIT 1,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x48 },
+	[0x49] = { "*** cb BIT 1,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x49 },
+	[0x4A] = { "*** cb BIT 1,D 2,8 Z01-", NULL, 2, { 8, 8 }, 0x4A },
+	[0x4B] = { "*** cb BIT 1,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x4B },
+	[0x4C] = { "*** cb BIT 1,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x4C },
+	[0x4D] = { "*** cb BIT 1,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x4D },
+	[0x4E] = { "*** cb BIT 1,[HL] 2,12 Z01-", NULL, 2, { 12, 12 }, 0x4E },
+	[0x4F] = { "*** cb BIT 1,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x4F },
+	[0x50] = { "*** cb BIT 2,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x50 },
+	[0x51] = { "*** cb BIT 2,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x51 },
+	[0x52] = { "*** cb BIT 2,D 2,8 Z01-", NULL, 2, { 8, 8 }, 0x52 },
+	[0x53] = { "*** cb BIT 2,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x53 },
+	[0x54] = { "*** cb BIT 2,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x54 },
+	[0x55] = { "*** cb BIT 2,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x55 },
+	[0x56] = { "*** cb BIT 2,[HL] 2,12 Z01-", NULL, 2, { 12, 12 }, 0x56 },
+	[0x57] = { "*** cb BIT 2,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x57 },
+	[0x58] = { "*** cb BIT 3,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x58 },
+	[0x59] = { "*** cb BIT 3,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x59 },
+	[0x5A] = { "*** cb BIT 3,D 2,8 Z01-", NULL, 2, { 8, 8 }, 0x5A },
+	[0x5B] = { "*** cb BIT 3,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x5B },
+	[0x5C] = { "*** cb BIT 3,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x5C },
+	[0x5D] = { "*** cb BIT 3,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x5D },
+	[0x5E] = { "*** cb BIT 3,[HL] 2,12 Z01-", NULL, 2, { 12, 12 }, 0x5E },
+	[0x5F] = { "*** cb BIT 3,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x5F },
+	[0x60] = { "*** cb BIT 4,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x60 },
+	[0x61] = { "*** cb BIT 4,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x61 },
+	[0x62] = { "*** cb BIT 4,D 2,8 Z01-", NULL, 2, { 8, 8 }, 0x62 },
+	[0x63] = { "*** cb BIT 4,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x63 },
+	[0x64] = { "*** cb BIT 4,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x64 },
+	[0x65] = { "*** cb BIT 4,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x65 },
+	[0x66] = { "*** cb BIT 4,[HL] 2,12 Z01-", NULL, 2, { 12, 12 }, 0x66 },
+	[0x67] = { "*** cb BIT 4,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x67 },
+	[0x68] = { "*** cb BIT 5,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x68 },
+	[0x69] = { "*** cb BIT 5,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x69 },
+	[0x6A] = { "*** cb BIT 5,D 2,8 Z01-", NULL, 2, { 8, 8 }, 0x6A },
+	[0x6B] = { "*** cb BIT 5,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x6B },
+	[0x6C] = { "*** cb BIT 5,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x6C },
+	[0x6D] = { "*** cb BIT 5,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x6D },
+	[0x6E] = { "*** cb BIT 5,[HL] 2,12 Z01-", NULL, 2, { 12, 12 }, 0x6E },
+	[0x6F] = { "*** cb BIT 5,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x6F },
+	[0x70] = { "*** cb BIT 6,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x70 },
+	[0x71] = { "*** cb BIT 6,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x71 },
+	[0x72] = { "*** cb BIT 6,D 2,8 Z01-", NULL, 2, { 8, 8 }, 0x72 },
+	[0x73] = { "*** cb BIT 6,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x73 },
+	[0x74] = { "*** cb BIT 6,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x74 },
+	[0x75] = { "*** cb BIT 6,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x75 },
+	[0x76] = { "*** cb BIT 6,[HL] 2,12 Z01-", NULL, 2, { 12, 12 }, 0x76 },
+	[0x77] = { "*** cb BIT 6,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x77 },
+	[0x78] = { "*** cb BIT 7,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x78 },
+	[0x79] = { "*** cb BIT 7,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x79 },
+	[0x7A] = { "*** cb BIT 7,D 2,8 Z01-", NULL, 2, { 8, 8 }, 0x7A },
+	[0x7B] = { "*** cb BIT 7,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x7B },
+	[0x7C] = { "*** cb BIT 7,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x7C },
+	[0x7D] = { "*** cb BIT 7,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x7D },
+	[0x7E] = { "*** cb BIT 7,[HL] 2,12 Z01-",
+		   cb_bit_7_$HL,
+		   2,
+		   { 12, 12 },
+		   0x7E },
+	[0x7F] = { "*** cb BIT 7,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x7F },
+	[0x80] = { "*** cb RES 0,B 2,8", NULL, 2, { 8, 8 }, 0x80 },
+	[0x81] = { "*** cb RES 0,C 2,8", NULL, 2, { 8, 8 }, 0x81 },
+	[0x82] = { "*** cb RES 0,D 2,8", NULL, 2, { 8, 8 }, 0x82 },
+	[0x83] = { "*** cb RES 0,E 2,8", NULL, 2, { 8, 8 }, 0x83 },
+	[0x84] = { "*** cb RES 0,H 2,8", NULL, 2, { 8, 8 }, 0x84 },
+	[0x85] = { "*** cb RES 0,L 2,8", NULL, 2, { 8, 8 }, 0x85 },
+	[0x86] = { "*** cb RES 0,[HL] 2,16", NULL, 2, { 16, 16 }, 0x86 },
+	[0x87] = { "*** cb RES 0,A 2,8", NULL, 2, { 8, 8 }, 0x87 },
+	[0x88] = { "*** cb RES 1,B 2,8", NULL, 2, { 8, 8 }, 0x88 },
+	[0x89] = { "*** cb RES 1,C 2,8", NULL, 2, { 8, 8 }, 0x89 },
+	[0x8A] = { "*** cb RES 1,D 2,8", NULL, 2, { 8, 8 }, 0x8A },
+	[0x8B] = { "*** cb RES 1,E 2,8", NULL, 2, { 8, 8 }, 0x8B },
+	[0x8C] = { "*** cb RES 1,H 2,8", NULL, 2, { 8, 8 }, 0x8C },
+	[0x8D] = { "*** cb RES 1,L 2,8", NULL, 2, { 8, 8 }, 0x8D },
+	[0x8E] = { "*** cb RES 1,[HL] 2,16", NULL, 2, { 16, 16 }, 0x8E },
+	[0x8F] = { "*** cb RES 1,A 2,8", NULL, 2, { 8, 8 }, 0x8F },
+	[0x90] = { "*** cb RES 2,B 2,8", NULL, 2, { 8, 8 }, 0x90 },
+	[0x91] = { "*** cb RES 2,C 2,8", NULL, 2, { 8, 8 }, 0x91 },
+	[0x92] = { "*** cb RES 2,D 2,8", NULL, 2, { 8, 8 }, 0x92 },
+	[0x93] = { "*** cb RES 2,E 2,8", NULL, 2, { 8, 8 }, 0x93 },
+	[0x94] = { "*** cb RES 2,H 2,8", NULL, 2, { 8, 8 }, 0x94 },
+	[0x95] = { "*** cb RES 2,L 2,8", NULL, 2, { 8, 8 }, 0x95 },
+	[0x96] = { "*** cb RES 2,[HL] 2,16", NULL, 2, { 16, 16 }, 0x96 },
+	[0x97] = { "*** cb RES 2,A 2,8", NULL, 2, { 8, 8 }, 0x97 },
+	[0x98] = { "*** cb RES 3,B 2,8", NULL, 2, { 8, 8 }, 0x98 },
+	[0x99] = { "*** cb RES 3,C 2,8", NULL, 2, { 8, 8 }, 0x99 },
+	[0x9A] = { "*** cb RES 3,D 2,8", NULL, 2, { 8, 8 }, 0x9A },
+	[0x9B] = { "*** cb RES 3,E 2,8", NULL, 2, { 8, 8 }, 0x9B },
+	[0x9C] = { "*** cb RES 3,H 2,8", NULL, 2, { 8, 8 }, 0x9C },
+	[0x9D] = { "*** cb RES 3,L 2,8", NULL, 2, { 8, 8 }, 0x9D },
+	[0x9E] = { "*** cb RES 3,[HL] 2,16", NULL, 2, { 16, 16 }, 0x9E },
+	[0x9F] = { "*** cb RES 3,A 2,8", NULL, 2, { 8, 8 }, 0x9F },
+	[0xA0] = { "*** cb RES 4,B 2,8", NULL, 2, { 8, 8 }, 0xA0 },
+	[0xA1] = { "*** cb RES 4,C 2,8", NULL, 2, { 8, 8 }, 0xA1 },
+	[0xA2] = { "*** cb RES 4,D 2,8", NULL, 2, { 8, 8 }, 0xA2 },
+	[0xA3] = { "*** cb RES 4,E 2,8", NULL, 2, { 8, 8 }, 0xA3 },
+	[0xA4] = { "*** cb RES 4,H 2,8", NULL, 2, { 8, 8 }, 0xA4 },
+	[0xA5] = { "*** cb RES 4,L 2,8", NULL, 2, { 8, 8 }, 0xA5 },
+	[0xA6] = { "*** cb RES 4,[HL] 2,16", NULL, 2, { 16, 16 }, 0xA6 },
+	[0xA7] = { "*** cb RES 4,A 2,8", NULL, 2, { 8, 8 }, 0xA7 },
+	[0xA8] = { "*** cb RES 5,B 2,8", NULL, 2, { 8, 8 }, 0xA8 },
+	[0xA9] = { "*** cb RES 5,C 2,8", NULL, 2, { 8, 8 }, 0xA9 },
+	[0xAA] = { "*** cb RES 5,D 2,8", NULL, 2, { 8, 8 }, 0xAA },
+	[0xAB] = { "*** cb RES 5,E 2,8", NULL, 2, { 8, 8 }, 0xAB },
+	[0xAC] = { "*** cb RES 5,H 2,8", NULL, 2, { 8, 8 }, 0xAC },
+	[0xAD] = { "*** cb RES 5,L 2,8", NULL, 2, { 8, 8 }, 0xAD },
+	[0xAE] = { "*** cb RES 5,[HL] 2,16", NULL, 2, { 16, 16 }, 0xAE },
+	[0xAF] = { "*** cb RES 5,A 2,8", NULL, 2, { 8, 8 }, 0xAF },
+	[0xB0] = { "*** cb RES 6,B 2,8", NULL, 2, { 8, 8 }, 0xB0 },
+	[0xB1] = { "*** cb RES 6,C 2,8", NULL, 2, { 8, 8 }, 0xB1 },
+	[0xB2] = { "*** cb RES 6,D 2,8", NULL, 2, { 8, 8 }, 0xB2 },
+	[0xB3] = { "*** cb RES 6,E 2,8", NULL, 2, { 8, 8 }, 0xB3 },
+	[0xB4] = { "*** cb RES 6,H 2,8", NULL, 2, { 8, 8 }, 0xB4 },
+	[0xB5] = { "*** cb RES 6,L 2,8", NULL, 2, { 8, 8 }, 0xB5 },
+	[0xB6] = { "*** cb RES 6,[HL] 2,16", NULL, 2, { 16, 16 }, 0xB6 },
+	[0xB7] = { "*** cb RES 6,A 2,8", NULL, 2, { 8, 8 }, 0xB7 },
+	[0xB8] = { "*** cb RES 7,B 2,8", NULL, 2, { 8, 8 }, 0xB8 },
+	[0xB9] = { "*** cb RES 7,C 2,8", NULL, 2, { 8, 8 }, 0xB9 },
+	[0xBA] = { "*** cb RES 7,D 2,8", NULL, 2, { 8, 8 }, 0xBA },
+	[0xBB] = { "*** cb RES 7,E 2,8", NULL, 2, { 8, 8 }, 0xBB },
+	[0xBC] = { "*** cb RES 7,H 2,8", NULL, 2, { 8, 8 }, 0xBC },
+	[0xBD] = { "*** cb RES 7,L 2,8", NULL, 2, { 8, 8 }, 0xBD },
+	[0xBE] = { "*** cb RES 7,[HL] 2,16", NULL, 2, { 16, 16 }, 0xBE },
+	[0xBF] = { "*** cb RES 7,A 2,8", NULL, 2, { 8, 8 }, 0xBF },
+	[0xC0] = { "*** cb SET 0,B 2,8", NULL, 2, { 8, 8 }, 0xC0 },
+	[0xC1] = { "*** cb SET 0,C 2,8", NULL, 2, { 8, 8 }, 0xC1 },
+	[0xC2] = { "*** cb SET 0,D 2,8", NULL, 2, { 8, 8 }, 0xC2 },
+	[0xC3] = { "*** cb SET 0,E 2,8", NULL, 2, { 8, 8 }, 0xC3 },
+	[0xC4] = { "*** cb SET 0,H 2,8", NULL, 2, { 8, 8 }, 0xC4 },
+	[0xC5] = { "*** cb SET 0,L 2,8", NULL, 2, { 8, 8 }, 0xC5 },
+	[0xC6] = { "*** cb SET 0,[HL] 2,16", cb_set_0_$HL, 2, { 16, 16 }, 0xC6 },
+	[0xC7] = { "*** cb SET 0,A 2,8", NULL, 2, { 8, 8 }, 0xC7 },
+	[0xC8] = { "*** cb SET 1,B 2,8", NULL, 2, { 8, 8 }, 0xC8 },
+	[0xC9] = { "*** cb SET 1,C 2,8", NULL, 2, { 8, 8 }, 0xC9 },
+	[0xCA] = { "*** cb SET 1,D 2,8", NULL, 2, { 8, 8 }, 0xCA },
+	[0xCB] = { "*** cb SET 1,E 2,8", NULL, 2, { 8, 8 }, 0xCB },
+	[0xCC] = { "*** cb SET 1,H 2,8", NULL, 2, { 8, 8 }, 0xCC },
+	[0xCD] = { "*** cb SET 1,L 2,8", NULL, 2, { 8, 8 }, 0xCD },
+	[0xCE] = { "*** cb SET 1,[HL] 2,16", NULL, 2, { 16, 16 }, 0xCE },
+	[0xCF] = { "*** cb SET 1,A 2,8", NULL, 2, { 8, 8 }, 0xCF },
+	[0xD0] = { "*** cb SET 2,B 2,8", NULL, 2, { 8, 8 }, 0xD0 },
+	[0xD1] = { "*** cb SET 2,C 2,8", NULL, 2, { 8, 8 }, 0xD1 },
+	[0xD2] = { "*** cb SET 2,D 2,8", NULL, 2, { 8, 8 }, 0xD2 },
+	[0xD3] = { "*** cb SET 2,E 2,8", NULL, 2, { 8, 8 }, 0xD3 },
+	[0xD4] = { "*** cb SET 2,H 2,8", NULL, 2, { 8, 8 }, 0xD4 },
+	[0xD5] = { "*** cb SET 2,L 2,8", NULL, 2, { 8, 8 }, 0xD5 },
+	[0xD6] = { "*** cb SET 2,[HL] 2,16", NULL, 2, { 16, 16 }, 0xD6 },
+	[0xD7] = { "*** cb SET 2,A 2,8", NULL, 2, { 8, 8 }, 0xD7 },
+	[0xD8] = { "*** cb SET 3,B 2,8", NULL, 2, { 8, 8 }, 0xD8 },
+	[0xD9] = { "*** cb SET 3,C 2,8", NULL, 2, { 8, 8 }, 0xD9 },
+	[0xDA] = { "*** cb SET 3,D 2,8", NULL, 2, { 8, 8 }, 0xDA },
+	[0xDB] = { "*** cb SET 3,E 2,8", NULL, 2, { 8, 8 }, 0xDB },
+	[0xDC] = { "*** cb SET 3,H 2,8", NULL, 2, { 8, 8 }, 0xDC },
+	[0xDD] = { "*** cb SET 3,L 2,8", NULL, 2, { 8, 8 }, 0xDD },
+	[0xDE] = { "*** cb SET 3,[HL] 2,16", NULL, 2, { 16, 16 }, 0xDE },
+	[0xDF] = { "*** cb SET 3,A 2,8", NULL, 2, { 8, 8 }, 0xDF },
+	[0xE0] = { "*** cb SET 4,B 2,8", NULL, 2, { 8, 8 }, 0xE0 },
+	[0xE1] = { "*** cb SET 4,C 2,8", NULL, 2, { 8, 8 }, 0xE1 },
+	[0xE2] = { "*** cb SET 4,D 2,8", NULL, 2, { 8, 8 }, 0xE2 },
+	[0xE3] = { "*** cb SET 4,E 2,8", NULL, 2, { 8, 8 }, 0xE3 },
+	[0xE4] = { "*** cb SET 4,H 2,8", NULL, 2, { 8, 8 }, 0xE4 },
+	[0xE5] = { "*** cb SET 4,L 2,8", NULL, 2, { 8, 8 }, 0xE5 },
+	[0xE6] = { "*** cb SET 4,[HL] 2,16", NULL, 2, { 16, 16 }, 0xE6 },
+	[0xE7] = { "*** cb SET 4,A 2,8", NULL, 2, { 8, 8 }, 0xE7 },
+	[0xE8] = { "*** cb SET 5,B 2,8", NULL, 2, { 8, 8 }, 0xE8 },
+	[0xE9] = { "*** cb SET 5,C 2,8", NULL, 2, { 8, 8 }, 0xE9 },
+	[0xEA] = { "*** cb SET 5,D 2,8", NULL, 2, { 8, 8 }, 0xEA },
+	[0xEB] = { "*** cb SET 5,E 2,8", NULL, 2, { 8, 8 }, 0xEB },
+	[0xEC] = { "*** cb SET 5,H 2,8", NULL, 2, { 8, 8 }, 0xEC },
+	[0xED] = { "*** cb SET 5,L 2,8", NULL, 2, { 8, 8 }, 0xED },
+	[0xEE] = { "*** cb SET 5,[HL] 2,16", NULL, 2, { 16, 16 }, 0xEE },
+	[0xEF] = { "*** cb SET 5,A 2,8", NULL, 2, { 8, 8 }, 0xEF },
+	[0xF0] = { "*** cb SET 6,B 2,8", NULL, 2, { 8, 8 }, 0xF0 },
+	[0xF1] = { "*** cb SET 6,C 2,8", NULL, 2, { 8, 8 }, 0xF1 },
+	[0xF2] = { "*** cb SET 6,D 2,8", NULL, 2, { 8, 8 }, 0xF2 },
+	[0xF3] = { "*** cb SET 6,E 2,8", NULL, 2, { 8, 8 }, 0xF3 },
+	[0xF4] = { "*** cb SET 6,H 2,8", NULL, 2, { 8, 8 }, 0xF4 },
+	[0xF5] = { "*** cb SET 6,L 2,8", NULL, 2, { 8, 8 }, 0xF5 },
+	[0xF6] = { "*** cb SET 6,[HL] 2,16", NULL, 2, { 16, 16 }, 0xF6 },
+	[0xF7] = { "*** cb SET 6,A 2,8", NULL, 2, { 8, 8 }, 0xF7 },
+	[0xF8] = { "*** cb SET 7,B 2,8", NULL, 2, { 8, 8 }, 0xF8 },
+	[0xF9] = { "*** cb SET 7,C 2,8", NULL, 2, { 8, 8 }, 0xF9 },
+	[0xFA] = { "*** cb SET 7,D 2,8", NULL, 2, { 8, 8 }, 0xFA },
+	[0xFB] = { "*** cb SET 7,E 2,8", NULL, 2, { 8, 8 }, 0xFB },
+	[0xFC] = { "*** cb SET 7,H 2,8", NULL, 2, { 8, 8 }, 0xFC },
+	[0xFD] = { "*** cb SET 7,L 2,8", NULL, 2, { 8, 8 }, 0xFD },
+	[0xFE] = { "*** cb SET 7,[HL] 2,16", NULL, 2, { 16, 16 }, 0xFE },
+	[0xFF] = { "*** cb SET 7,A 2,8", NULL, 2, { 8, 8 }, 0xFF },
+};
+
+/*
+uint8_t op_cb(struct CPU *cpu)
+{
+	uint8_t cbdots = cpu->instr->dots[0];
+	fprintf(stderr, "\n blach ==============\n");
+	cpu->op = cpu->rom[cpu->pc++];
+	cpu->instr = &cbtbl[cpu->op];
+
+	return cbdots + cpu->instr->exec(cpu);
+}
+*/
+
+struct instr optbl[256] = {
+	[0x00] = { "NOP 1,4", NULL, 1, { 4, 4 }, 0x00 },
+	[0x01] = { "LD BC,n16 3,12", NULL, 3, { 12, 12 }, 0x01 },
+	[0x02] = { "LD [BC],A 1,8", NULL, 1, { 8, 8 }, 0x02 },
+	[0x03] = { "INC BC 1,8", NULL, 1, { 8, 8 }, 0x03 },
+	[0x04] = { "INC B 1,4 Z0H-", NULL, 1, { 4, 4 }, 0x04 },
+	[0x05] = { "DEC B 1,4 Z1H-", NULL, 1, { 4, 4 }, 0x05 },
+	[0x06] = { "LD B,n8 2,8", NULL, 2, { 8, 8 }, 0x06 },
+	[0x07] = { "RLCA 1,4 000C", NULL, 1, { 4, 4 }, 0x07 },
+	[0x08] = { "LD [a16],SP 3,20", NULL, 3, { 20, 20 }, 0x08 },
+	[0x09] = { "ADD HL,BC 1,8 -0HC", NULL, 1, { 8, 8 }, 0x09 },
+	[0x0A] = { "LD A,[BC] 1,8", NULL, 1, { 8, 8 }, 0x0A },
+	[0x0B] = { "DEC BC 1,8", NULL, 1, { 8, 8 }, 0x0B },
+	[0x0C] = { "INC C 1,4 Z0H-", NULL, 1, { 4, 4 }, 0x0C },
+	[0x0D] = { "DEC C 1,4 Z1H-", NULL, 1, { 4, 4 }, 0x0D },
+	[0x0E] = { "LD C,n8 2,8", NULL, 2, { 8, 8 }, 0x0E },
+	[0x0F] = { "RRCA 1,4 000C", NULL, 1, { 4, 4 }, 0x0F },
+	[0x10] = { "STOP n8 2,4", NULL, 2, { 4, 4 }, 0x10 },
+	[0x11] = { "LD DE,n16 3,12", NULL, 3, { 12, 12 }, 0x11 },
+	[0x12] = { "LD [DE],A 1,8", NULL, 1, { 8, 8 }, 0x12 },
+	[0x13] = { "INC DE 1,8", NULL, 1, { 8, 8 }, 0x13 },
+	[0x14] = { "INC D 1,4 Z0H-", NULL, 1, { 4, 4 }, 0x14 },
+	[0x15] = { "DEC D 1,4 Z1H-", NULL, 1, { 4, 4 }, 0x15 },
+	[0x16] = { "LD D,n8 2,8", NULL, 2, { 8, 8 }, 0x16 },
+	[0x17] = { "RLA 1,4 000C", NULL, 1, { 4, 4 }, 0x17 },
+	[0x18] = { "JR e8 2,12", NULL, 2, { 12, 12 }, 0x18 },
+	[0x19] = { "ADD HL,DE 1,8 -0HC", NULL, 1, { 8, 8 }, 0x19 },
+	[0x1A] = { "LD A,[DE] 1,8", NULL, 1, { 8, 8 }, 0x1A },
+	[0x1B] = { "DEC DE 1,8", NULL, 1, { 8, 8 }, 0x1B },
+	[0x1C] = { "INC E 1,4 Z0H-", NULL, 1, { 4, 4 }, 0x1C },
+	[0x1D] = { "DEC E 1,4 Z1H-", NULL, 1, { 4, 4 }, 0x1D },
+	[0x1E] = { "LD E,n8 2,8", NULL, 2, { 8, 8 }, 0x1E },
+	[0x1F] = { "RRA 1,4 000C", NULL, 1, { 4, 4 }, 0x1F },
+	[0x20] = { "JR NZ,e8 2,12/8", op_jr_NZ_e8, 2, { 12, 8 }, 0x20 },
+	[0x21] = { "LD HL,n16 3,12", op_ld_HL_n16, 3, { 12, 12 }, 0x21 },
+	[0x22] = { "LD [HL],A 1,8", NULL, 1, { 8, 8 }, 0x22 },
+	[0x23] = { "INC HL 1,8", NULL, 1, { 8, 8 }, 0x23 },
+	[0x24] = { "INC H 1,4 Z0H-", NULL, 1, { 4, 4 }, 0x24 },
+	[0x25] = { "DEC H 1,4 Z1H-", NULL, 1, { 4, 4 }, 0x25 },
+	[0x26] = { "LD H,n8 2,8", NULL, 2, { 8, 8 }, 0x26 },
+	[0x27] = { "DAA 1,4 Z-0C", NULL, 1, { 4, 4 }, 0x27 },
+	[0x28] = { "JR Z,e8 2,12/8", NULL, 2, { 12, 8 }, 0x28 },
+	[0x29] = { "ADD HL,HL 1,8 -0HC", NULL, 1, { 8, 8 }, 0x29 },
+	[0x2A] = { "LD A,[HL] 1,8", NULL, 1, { 8, 8 }, 0x2A },
+	[0x2B] = { "DEC HL 1,8", NULL, 1, { 8, 8 }, 0x2B },
+	[0x2C] = { "INC L 1,4 Z0H-", NULL, 1, { 4, 4 }, 0x2C },
+	[0x2D] = { "DEC L 1,4 Z1H-", NULL, 1, { 4, 4 }, 0x2D },
+	[0x2E] = { "LD L,n8 2,8", NULL, 2, { 8, 8 }, 0x2E },
+	[0x2F] = { "CPL 1,4 -11-", NULL, 1, { 4, 4 }, 0x2F },
+	[0x30] = { "JR NC,e8 2,12/8", NULL, 2, { 12, 8 }, 0x30 },
+	[0x31] = { "LD SP,n16 3,12", op_ld_sp_n16, 3, { 12, 12 }, 0x31 },
+	[0x32] = { "LD [HL],A 1,8", NULL, 1, { 8, 8 }, 0x32 },
+	[0x33] = { "INC SP 1,8", NULL, 1, { 8, 8 }, 0x33 },
+	[0x34] = { "INC [HL] 1,12 Z0H-", NULL, 1, { 12, 12 }, 0x34 },
+	[0x35] = { "DEC [HL] 1,12 Z1H-", NULL, 1, { 12, 12 }, 0x35 },
+	[0x36] = { "LD [HL],n8 2,12", NULL, 2, { 12, 12 }, 0x36 },
+	[0x37] = { "SCF 1,4 -001", NULL, 1, { 4, 4 }, 0x37 },
+	[0x38] = { "JR C,e8 2,12/8", NULL, 2, { 12, 8 }, 0x38 },
+	[0x39] = { "ADD HL,SP 1,8 -0HC", NULL, 1, { 8, 8 }, 0x39 },
+	[0x3A] = { "LD A,[HL] 1,8", NULL, 1, { 8, 8 }, 0x3A },
+	[0x3B] = { "DEC SP 1,8", NULL, 1, { 8, 8 }, 0x3B },
+	[0x3C] = { "INC A 1,4 Z0H-", NULL, 1, { 4, 4 }, 0x3C },
+	[0x3D] = { "DEC A 1,4 Z1H-", NULL, 1, { 4, 4 }, 0x3D },
+	[0x3E] = { "LD A,n8 2,8", op_ld_A_n8, 2, { 8, 8 }, 0x3E },
+	[0x3F] = { "CCF 1,4 -00C", NULL, 1, { 4, 4 }, 0x3F },
+	[0x40] = { "LD B,B 1,4", NULL, 1, { 4, 4 }, 0x40 },
+	[0x41] = { "LD B,C 1,4", NULL, 1, { 4, 4 }, 0x41 },
+	[0x42] = { "LD B,D 1,4", NULL, 1, { 4, 4 }, 0x42 },
+	[0x43] = { "LD B,E 1,4", NULL, 1, { 4, 4 }, 0x43 },
+	[0x44] = { "LD B,H 1,4", NULL, 1, { 4, 4 }, 0x44 },
+	[0x45] = { "LD B,L 1,4", NULL, 1, { 4, 4 }, 0x45 },
+	[0x46] = { "LD B,[HL] 1,8", NULL, 1, { 8, 8 }, 0x46 },
+	[0x47] = { "LD B,A 1,4", NULL, 1, { 4, 4 }, 0x47 },
+	[0x48] = { "LD C,B 1,4", NULL, 1, { 4, 4 }, 0x48 },
+	[0x49] = { "LD C,C 1,4", NULL, 1, { 4, 4 }, 0x49 },
+	[0x4A] = { "LD C,D 1,4", NULL, 1, { 4, 4 }, 0x4A },
+	[0x4B] = { "LD C,E 1,4", NULL, 1, { 4, 4 }, 0x4B },
+	[0x4C] = { "LD C,H 1,4", NULL, 1, { 4, 4 }, 0x4C },
+	[0x4D] = { "LD C,L 1,4", NULL, 1, { 4, 4 }, 0x4D },
+	[0x4E] = { "LD C,[HL] 1,8", NULL, 1, { 8, 8 }, 0x4E },
+	[0x4F] = { "LD C,A 1,4", NULL, 1, { 4, 4 }, 0x4F },
+	[0x50] = { "LD D,B 1,4", NULL, 1, { 4, 4 }, 0x50 },
+	[0x51] = { "LD D,C 1,4", NULL, 1, { 4, 4 }, 0x51 },
+	[0x52] = { "LD D,D 1,4", NULL, 1, { 4, 4 }, 0x52 },
+	[0x53] = { "LD D,E 1,4", NULL, 1, { 4, 4 }, 0x53 },
+	[0x54] = { "LD D,H 1,4", NULL, 1, { 4, 4 }, 0x54 },
+	[0x55] = { "LD D,L 1,4", NULL, 1, { 4, 4 }, 0x55 },
+	[0x56] = { "LD D,[HL] 1,8", NULL, 1, { 8, 8 }, 0x56 },
+	[0x57] = { "LD D,A 1,4", NULL, 1, { 4, 4 }, 0x57 },
+	[0x58] = { "LD E,B 1,4", NULL, 1, { 4, 4 }, 0x58 },
+	[0x59] = { "LD E,C 1,4", NULL, 1, { 4, 4 }, 0x59 },
+	[0x5A] = { "LD E,D 1,4", NULL, 1, { 4, 4 }, 0x5A },
+	[0x5B] = { "LD E,E 1,4", NULL, 1, { 4, 4 }, 0x5B },
+	[0x5C] = { "LD E,H 1,4", NULL, 1, { 4, 4 }, 0x5C },
+	[0x5D] = { "LD E,L 1,4", NULL, 1, { 4, 4 }, 0x5D },
+	[0x5E] = { "LD E,[HL] 1,8", NULL, 1, { 8, 8 }, 0x5E },
+	[0x5F] = { "LD E,A 1,4", NULL, 1, { 4, 4 }, 0x5F },
+	[0x60] = { "LD H,B 1,4", NULL, 1, { 4, 4 }, 0x60 },
+	[0x61] = { "LD H,C 1,4", NULL, 1, { 4, 4 }, 0x61 },
+	[0x62] = { "LD H,D 1,4", NULL, 1, { 4, 4 }, 0x62 },
+	[0x63] = { "LD H,E 1,4", NULL, 1, { 4, 4 }, 0x63 },
+	[0x64] = { "LD H,H 1,4", NULL, 1, { 4, 4 }, 0x64 },
+	[0x65] = { "LD H,L 1,4", NULL, 1, { 4, 4 }, 0x65 },
+	[0x66] = { "LD H,[HL] 1,8", NULL, 1, { 8, 8 }, 0x66 },
+	[0x67] = { "LD H,A 1,4", NULL, 1, { 4, 4 }, 0x67 },
+	[0x68] = { "LD L,B 1,4", NULL, 1, { 4, 4 }, 0x68 },
+	[0x69] = { "LD L,C 1,4", NULL, 1, { 4, 4 }, 0x69 },
+	[0x6A] = { "LD L,D 1,4", NULL, 1, { 4, 4 }, 0x6A },
+	[0x6B] = { "LD L,E 1,4", NULL, 1, { 4, 4 }, 0x6B },
+	[0x6C] = { "LD L,H 1,4", NULL, 1, { 4, 4 }, 0x6C },
+	[0x6D] = { "LD L,L 1,4", NULL, 1, { 4, 4 }, 0x6D },
+	[0x6E] = { "LD L,[HL] 1,8", NULL, 1, { 8, 8 }, 0x6E },
+	[0x6F] = { "LD L,A 1,4", NULL, 1, { 4, 4 }, 0x6F },
+	[0x70] = { "LD [HL],B 1,8", NULL, 1, { 8, 8 }, 0x70 },
+	[0x71] = { "LD [HL],C 1,8", NULL, 1, { 8, 8 }, 0x71 },
+	[0x72] = { "LD [HL],D 1,8", NULL, 1, { 8, 8 }, 0x72 },
+	[0x73] = { "LD [HL],E 1,8", NULL, 1, { 8, 8 }, 0x73 },
+	[0x74] = { "LD [HL],H 1,8", NULL, 1, { 8, 8 }, 0x74 },
+	[0x75] = { "LD [HL],L 1,8", NULL, 1, { 8, 8 }, 0x75 },
+	[0x76] = { "HALT 1,4", NULL, 1, { 4, 4 }, 0x76 },
+	[0x77] = { "LD [HL],A 1,8", NULL, 1, { 8, 8 }, 0x77 },
+	[0x78] = { "LD A,B 1,4", NULL, 1, { 4, 4 }, 0x78 },
+	[0x79] = { "LD A,C 1,4", NULL, 1, { 4, 4 }, 0x79 },
+	[0x7A] = { "LD A,D 1,4", NULL, 1, { 4, 4 }, 0x7A },
+	[0x7B] = { "LD A,E 1,4", NULL, 1, { 4, 4 }, 0x7B },
+	[0x7C] = { "LD A,H 1,4", NULL, 1, { 4, 4 }, 0x7C },
+	[0x7D] = { "LD A,L 1,4", NULL, 1, { 4, 4 }, 0x7D },
+	[0x7E] = { "LD A,[HL] 1,8", NULL, 1, { 8, 8 }, 0x7E },
+	[0x7F] = { "LD A,A 1,4", NULL, 1, { 4, 4 }, 0x7F },
+	[0x80] = { "ADD A,B 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x80 },
+	[0x81] = { "ADD A,C 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x81 },
+	[0x82] = { "ADD A,D 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x82 },
+	[0x83] = { "ADD A,E 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x83 },
+	[0x84] = { "ADD A,H 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x84 },
+	[0x85] = { "ADD A,L 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x85 },
+	[0x86] = { "ADD A,[HL] 1,8 Z0HC", NULL, 1, { 8, 8 }, 0x86 },
+	[0x87] = { "ADD A,A 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x87 },
+	[0x88] = { "ADC A,B 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x88 },
+	[0x89] = { "ADC A,C 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x89 },
+	[0x8A] = { "ADC A,D 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x8A },
+	[0x8B] = { "ADC A,E 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x8B },
+	[0x8C] = { "ADC A,H 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x8C },
+	[0x8D] = { "ADC A,L 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x8D },
+	[0x8E] = { "ADC A,[HL] 1,8 Z0HC", NULL, 1, { 8, 8 }, 0x8E },
+	[0x8F] = { "ADC A,A 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x8F },
+	[0x90] = { "SUB A,B 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x90 },
+	[0x91] = { "SUB A,C 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x91 },
+	[0x92] = { "SUB A,D 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x92 },
+	[0x93] = { "SUB A,E 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x93 },
+	[0x94] = { "SUB A,H 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x94 },
+	[0x95] = { "SUB A,L 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x95 },
+	[0x96] = { "SUB A,[HL] 1,8 Z1HC", NULL, 1, { 8, 8 }, 0x96 },
+	[0x97] = { "SUB A,A 1,4 1100", NULL, 1, { 4, 4 }, 0x97 },
+	[0x98] = { "SBC A,B 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x98 },
+	[0x99] = { "SBC A,C 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x99 },
+	[0x9A] = { "SBC A,D 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x9A },
+	[0x9B] = { "SBC A,E 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x9B },
+	[0x9C] = { "SBC A,H 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x9C },
+	[0x9D] = { "SBC A,L 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x9D },
+	[0x9E] = { "SBC A,[HL] 1,8 Z1HC", NULL, 1, { 8, 8 }, 0x9E },
+	[0x9F] = { "SBC A,A 1,4 Z1H-", NULL, 1, { 4, 4 }, 0x9F },
+	[0xA0] = { "AND A,B 1,4 Z010", NULL, 1, { 4, 4 }, 0xA0 },
+	[0xA1] = { "AND A,C 1,4 Z010", NULL, 1, { 4, 4 }, 0xA1 },
+	[0xA2] = { "AND A,D 1,4 Z010", NULL, 1, { 4, 4 }, 0xA2 },
+	[0xA3] = { "AND A,E 1,4 Z010", NULL, 1, { 4, 4 }, 0xA3 },
+	[0xA4] = { "AND A,H 1,4 Z010", NULL, 1, { 4, 4 }, 0xA4 },
+	[0xA5] = { "AND A,L 1,4 Z010", NULL, 1, { 4, 4 }, 0xA5 },
+	[0xA6] = { "AND A,[HL] 1,8 Z010", NULL, 1, { 8, 8 }, 0xA6 },
+	[0xA7] = { "AND A,A 1,4 Z010", NULL, 1, { 4, 4 }, 0xA7 },
+	[0xA8] = { "XOR A,B 1,4 Z000", NULL, 1, { 4, 4 }, 0xA8 },
+	[0xA9] = { "XOR A,C 1,4 Z000", NULL, 1, { 4, 4 }, 0xA9 },
+	[0xAA] = { "XOR A,D 1,4 Z000", NULL, 1, { 4, 4 }, 0xAA },
+	[0xAB] = { "XOR A,E 1,4 Z000", NULL, 1, { 4, 4 }, 0xAB },
+	[0xAC] = { "XOR A,H 1,4 Z000", NULL, 1, { 4, 4 }, 0xAC },
+	[0xAD] = { "XOR A,L 1,4 Z000", NULL, 1, { 4, 4 }, 0xAD },
+	[0xAE] = { "XOR A,[HL] 1,8 Z000", NULL, 1, { 8, 8 }, 0xAE },
+	[0xAF] = { "XOR A,A 1,4 1000", NULL, 1, { 4, 4 }, 0xAF },
+	[0xB0] = { "OR A,B 1,4 Z000", NULL, 1, { 4, 4 }, 0xB0 },
+	[0xB1] = { "OR A,C 1,4 Z000", NULL, 1, { 4, 4 }, 0xB1 },
+	[0xB2] = { "OR A,D 1,4 Z000", NULL, 1, { 4, 4 }, 0xB2 },
+	[0xB3] = { "OR A,E 1,4 Z000", NULL, 1, { 4, 4 }, 0xB3 },
+	[0xB4] = { "OR A,H 1,4 Z000", NULL, 1, { 4, 4 }, 0xB4 },
+	[0xB5] = { "OR A,L 1,4 Z000", NULL, 1, { 4, 4 }, 0xB5 },
+	[0xB6] = { "OR A,[HL] 1,8 Z000", NULL, 1, { 8, 8 }, 0xB6 },
+	[0xB7] = { "OR A,A 1,4 Z000", op_or_A_A, 1, { 4, 4 }, 0xB7 },
+	[0xB8] = { "CP A,B 1,4 Z1HC", NULL, 1, { 4, 4 }, 0xB8 },
+	[0xB9] = { "CP A,C 1,4 Z1HC", NULL, 1, { 4, 4 }, 0xB9 },
+	[0xBA] = { "CP A,D 1,4 Z1HC", NULL, 1, { 4, 4 }, 0xBA },
+	[0xBB] = { "CP A,E 1,4 Z1HC", NULL, 1, { 4, 4 }, 0xBB },
+	[0xBC] = { "CP A,H 1,4 Z1HC", NULL, 1, { 4, 4 }, 0xBC },
+	[0xBD] = { "CP A,L 1,4 Z1HC", NULL, 1, { 4, 4 }, 0xBD },
+	[0xBE] = { "CP A,[HL] 1,8 Z1HC", NULL, 1, { 8, 8 }, 0xBE },
+	[0xBF] = { "CP A,A 1,4 1100", NULL, 1, { 4, 4 }, 0xBF },
+	[0xC0] = { "RET NZ 1,20/8", op_ret_NZ, 1, { 20, 8 }, 0xC0 },
+	[0xC1] = { "POP BC 1,12", NULL, 1, { 12, 12 }, 0xC1 },
+	[0xC2] = { "JP NZ,a16 3,16/12", NULL, 3, { 16, 12 }, 0xC2 },
+	[0xC3] = { "JP a16 3,16", NULL, 3, { 16, 16 }, 0xC3 },
+	[0xC4] = { "CALL NZ,a16 3,24/12", NULL, 3, { 24, 12 }, 0xC4 },
+	[0xC5] = { "PUSH BC 1,16", NULL, 1, { 16, 16 }, 0xC5 },
+	[0xC6] = { "ADD A,n8 2,8 Z0HC", NULL, 2, { 8, 8 }, 0xC6 },
+	[0xC7] = { "RST $00 1,16", NULL, 1, { 16, 16 }, 0xC7 },
+	[0xC8] = { "RET Z 1,20/8", op_ret_Z, 1, { 20, 8 }, 0xC8 },
+	[0xC9] = { "RET 1,16", NULL, 1, { 16, 16 }, 0xC9 },
+	[0xCA] = { "JP Z,a16 3,16/12", NULL, 3, { 16, 12 }, 0xCA },
+	[0xCB] = { "PREFIX 1,4", NULL, 1, { 4, 4 }, 0xCB },
+	[0xCC] = { "CALL Z,a16 3,24/12", NULL, 3, { 24, 12 }, 0xCC },
+	[0xCD] = { "CALL a16 3,24", op_call_a16, 3, { 24, 24 }, 0xCD },
+	[0xCE] = { "ADC A,n8 2,8 Z0HC", NULL, 2, { 8, 8 }, 0xCE },
+	[0xCF] = { "RST $08 1,16", NULL, 1, { 16, 16 }, 0xCF },
+	[0xD0] = { "RET NC 1,20/8", NULL, 1, { 20, 8 }, 0xD0 },
+	[0xD1] = { "POP DE 1,12", NULL, 1, { 12, 12 }, 0xD1 },
+	[0xD2] = { "JP NC,a16 3,16/12", NULL, 3, { 16, 12 }, 0xD2 },
+	[0xD3] = { "ILLEGAL_D3 1,4", NULL, 1, { 4, 4 }, 0xD3 },
+	[0xD4] = { "CALL NC,a16 3,24/12", NULL, 3, { 24, 12 }, 0xD4 },
+	[0xD5] = { "PUSH DE 1,16", NULL, 1, { 16, 16 }, 0xD5 },
+	[0xD6] = { "SUB A,n8 2,8 Z1HC", NULL, 2, { 8, 8 }, 0xD6 },
+	[0xD7] = { "RST $10 1,16", NULL, 1, { 16, 16 }, 0xD7 },
+	[0xD8] = { "RET C 1,20/8", NULL, 1, { 20, 8 }, 0xD8 },
+	[0xD9] = { "RETI 1,16", NULL, 1, { 16, 16 }, 0xD9 },
+	[0xDA] = { "JP C,a16 3,16/12", NULL, 3, { 16, 12 }, 0xDA },
+	[0xDB] = { "ILLEGAL_DB 1,4", NULL, 1, { 4, 4 }, 0xDB },
+	[0xDC] = { "CALL C,a16 3,24/12", NULL, 3, { 24, 12 }, 0xDC },
+	[0xDD] = { "ILLEGAL_DD 1,4", NULL, 1, { 4, 4 }, 0xDD },
+	[0xDE] = { "SBC A,n8 2,8 Z1HC", NULL, 2, { 8, 8 }, 0xDE },
+	[0xDF] = { "RST $18 1,16", NULL, 1, { 16, 16 }, 0xDF },
+	[0xE0] = { "LDH [a8],A 2,12", NULL, 2, { 12, 12 }, 0xE0 },
+	[0xE1] = { "POP HL 1,12", NULL, 1, { 12, 12 }, 0xE1 },
+	[0xE2] = { "LDH [C],A 1,8", NULL, 1, { 8, 8 }, 0xE2 },
+	[0xE3] = { "ILLEGAL_E3 1,4", NULL, 1, { 4, 4 }, 0xE3 },
+	[0xE4] = { "ILLEGAL_E4 1,4", NULL, 1, { 4, 4 }, 0xE4 },
+	[0xE5] = { "PUSH HL 1,16", NULL, 1, { 16, 16 }, 0xE5 },
+	[0xE6] = { "AND A,n8 2,8 Z010", NULL, 2, { 8, 8 }, 0xE6 },
+	[0xE7] = { "RST $20 1,16", NULL, 1, { 16, 16 }, 0xE7 },
+	[0xE8] = { "ADD SP,e8 2,16 00HC", NULL, 2, { 16, 16 }, 0xE8 },
+	[0xE9] = { "JP HL 1,4", NULL, 1, { 4, 4 }, 0xE9 },
+	[0xEA] = { "LD [a16],A 3,16", op_ld_$a16_A, 3, { 16, 16 }, 0xEA },
+	[0xEB] = { "ILLEGAL_EB 1,4", NULL, 1, { 4, 4 }, 0xEB },
+	[0xEC] = { "ILLEGAL_EC 1,4", NULL, 1, { 4, 4 }, 0xEC },
+	[0xED] = { "ILLEGAL_ED 1,4", NULL, 1, { 4, 4 }, 0xED },
+	[0xEE] = { "XOR A,n8 2,8 Z000", NULL, 2, { 8, 8 }, 0xEE },
+	[0xEF] = { "RST $28 1,16", NULL, 1, { 16, 16 }, 0xEF },
+	[0xF0] = { "LDH A,[a8] 2,12", NULL, 2, { 12, 12 }, 0xF0 },
+	[0xF1] = { "POP AF 1,12 ZNHC", NULL, 1, { 12, 12 }, 0xF1 },
+	[0xF2] = { "LDH A,[C] 1,8", NULL, 1, { 8, 8 }, 0xF2 },
+	[0xF3] = { "DI 1,4", op_di, 1, { 4, 4 }, 0xF3 },
+	[0xF4] = { "ILLEGAL_F4 1,4", NULL, 1, { 4, 4 }, 0xF4 },
+	[0xF5] = { "PUSH AF 1,16", NULL, 1, { 16, 16 }, 0xF5 },
+	[0xF6] = { "OR A,n8 2,8 Z000", NULL, 2, { 8, 8 }, 0xF6 },
+	[0xF7] = { "RST $30 1,16", NULL, 1, { 16, 16 }, 0xF7 },
+	[0xF8] = { "LD HL,SP,e8 2,12 00HC", NULL, 2, { 12, 12 }, 0xF8 },
+	[0xF9] = { "LD SP,HL 1,8", NULL, 1, { 8, 8 }, 0xF9 },
+	[0xFA] = { "LD A,[a16] 3,16", op_ld_A_$a16, 3, { 16, 16 }, 0xFA },
+	[0xFB] = { "EI 1,4", NULL, 1, { 4, 4 }, 0xFB },
+	[0xFC] = { "ILLEGAL_FC 1,4", NULL, 1, { 4, 4 }, 0xFC },
+	[0xFD] = { "ILLEGAL_FD 1,4", NULL, 1, { 4, 4 }, 0xFD },
+	[0xFE] = { "CP A,n8 2,8 Z1HC", op_cp_A_n8, 2, { 8, 8 }, 0xFE },
+	[0xFF] = { "RST $38 1,16", NULL, 1, { 16, 16 }, 0xFF },
 };
 
 void initreg(struct CPU *cpu)
@@ -611,6 +806,13 @@ void initreg_cgb(struct CPU *cpu)
 void cpu_fetch(struct CPU *cpu)
 {
 	cpu->op = cpu->rom[cpu->pc++];
+	if (cpu->op == 0xcb) {
+		cpu->op = cpu->rom[cpu->pc++];
+		cpu->instr = &cbtbl[cpu->op];
+		cpu->prefix = true;
+		return;
+	}
+
 	cpu->instr = &optbl[cpu->op];
 }
 
@@ -643,7 +845,7 @@ void cpu_ldrom(struct CPU *cpu, char *rom)
 	cpu->de = 0xff56; //cgb dmg mode 0x0008
 	cpu->hl = 0x000d; // cgb dmg ????
 
-	cpu->ime = cpu->dblspd = false;
+	cpu->ime = cpu->dblspd = cpu->prefix = false;
 	cpu->pc = 0x150; // assume valid rom. (cpu->pc = 0x100)
 	cpu_fetch(cpu);
 
@@ -658,19 +860,31 @@ void cpu_ldrom(struct CPU *cpu, char *rom)
 	initreg_cgb(cpu);
 }
 
+void printInstr(struct CPU *cpu)
+{
+	if (cpu->prefix) {
+		fprintf(stderr, "0x%04x: cb %02x -- %s ", cpu->pc - 2,
+			cpu->instr->op, cpu->instr->mnem);
+		return;
+	}
+	fprintf(stderr, "0x%04x: op %02x -- %s ", cpu->pc - 1, cpu->instr->op,
+		cpu->instr->mnem);
+}
+
 int cpu_exec(struct CPU *cpu)
 {
-	fprintf(stderr, "0x%04x: op %02x -- %s %d,%d ", cpu->pc - 1, cpu->op,
-		cpu->instr->mnem, cpu->instr->len, cpu->instr->dots);
+	if (cpu->prefix) {
+		fprintf(stderr, "\n========================================\n");
+	}
+	printInstr(cpu);
 	if (!cpu->instr->exec) {
 		fprintf(stderr, " !!! ERROR: NOT IMPLEMENTED\n\n");
 		exit(1);
 	}
 
-	cpu->instr->exec(cpu);
-	cpu->pc += cpu->instr->len - 1;
-	//fprintf(stderr, "\n");
-	return cpu->instr->dots;
+	uint8_t result = cpu->instr->exec(cpu);
+	cpu->prefix = false;
+	return result;
 }
 
 int cpu_step(struct CPU *cpu)
