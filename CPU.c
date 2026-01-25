@@ -17,8 +17,43 @@ static inline void wr_le16(uint8_t *dest, uint16_t val)
 	dest[1] = (val >> 8) & 0xff;
 }
 
+static inline void call(struct CPU *cpu, uint16_t dest)
+{
+	cpu->sp -= 2;
+	wr_le16(cpu->rom + cpu->sp, cpu->pc);
+
+	fprintf(stderr, "pc=0x%04x a16=0x%04x [sp] 0x%04x (0x%04x)", cpu->pc,
+		dest, *(uint16_t *)(cpu->rom + cpu->sp),
+		*(uint16_t *)(&cpu->rom[cpu->sp]));
+
+	cpu->pc = dest;
+}
+
 uint8_t op_noop(struct CPU *cpu) //0x00
 {
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_stop(struct CPU *cpu) //0x10
+{
+	// TODO: very tricky behavior:
+	// https://gbdev.io/pandocs/Reducing_Power_Consumption.html#using-the-stop-instruction
+
+	cpu->pc++;
+	cpu->dblspd = !cpu->dblspd;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_B_n8(struct CPU *cpu) //0x06
+{
+	cpu->b = cpu->rom[cpu->pc++];
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_jr_e8(struct CPU *cpu) //0x20
+{
+	int8_t e8 = cpu->rom[cpu->pc++];
+	cpu->pc += e8;
 	return cpu->instr->dots[0];
 }
 
@@ -54,11 +89,406 @@ uint8_t op_ld_A_n8(struct CPU *cpu) //0x3e
 	return cpu->instr->dots[0];
 }
 
+uint8_t op_ld_B_B(struct CPU *cpu) //0x40
+{
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_B_C(struct CPU *cpu) //0x41
+{
+	cpu->b = cpu->c;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_B_D(struct CPU *cpu) //0x42
+{
+	cpu->b = cpu->d;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_B_E(struct CPU *cpu) //0x43
+{
+	cpu->b = cpu->e;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_B_H(struct CPU *cpu) //0x44
+{
+	cpu->b = cpu->h;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_B_L(struct CPU *cpu) //0x45
+{
+	cpu->b = cpu->l;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_B_$HL(struct CPU *cpu) //0x46
+{
+	cpu->b = cpu->rom[cpu->hl];
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_B_A(struct CPU *cpu) //0x47
+{
+	cpu->b = cpu->a;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_C_B(struct CPU *cpu) //0x48
+{
+	cpu->c = cpu->b;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_C_C(struct CPU *cpu) //0x49
+{
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_C_D(struct CPU *cpu) //0x4a
+{
+	cpu->c = cpu->d;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_C_E(struct CPU *cpu) //0x4b
+{
+	cpu->c = cpu->e;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_C_H(struct CPU *cpu) //0x4c
+{
+	cpu->c = cpu->h;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_C_L(struct CPU *cpu) //0x4d
+{
+	cpu->c = cpu->l;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_C_$HL(struct CPU *cpu) //0x4e
+{
+	cpu->c = cpu->rom[cpu->hl];
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_C_A(struct CPU *cpu) //0x4f
+{
+	cpu->c = cpu->a;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_D_B(struct CPU *cpu) //0x50
+{
+	cpu->d = cpu->b;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_D_C(struct CPU *cpu) //0x51
+{
+	cpu->d = cpu->c;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_D_D(struct CPU *cpu) //0x52
+{
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_D_E(struct CPU *cpu) //0x53
+{
+	cpu->d = cpu->e;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_D_H(struct CPU *cpu) //0x54
+{
+	cpu->d = cpu->h;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_D_L(struct CPU *cpu) //0x55
+{
+	cpu->d = cpu->l;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_D_$HL(struct CPU *cpu) //0x56
+{
+	cpu->d = cpu->rom[cpu->hl];
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_D_A(struct CPU *cpu) //0x57
+{
+	cpu->d = cpu->a;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_E_B(struct CPU *cpu) //0x58
+{
+	cpu->e = cpu->b;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_E_C(struct CPU *cpu) //0x59
+{
+	cpu->e = cpu->c;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_E_D(struct CPU *cpu) //0x5a
+{
+	cpu->e = cpu->d;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_E_E(struct CPU *cpu) //0x5b
+{
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_E_H(struct CPU *cpu) //0x5c
+{
+	cpu->e = cpu->h;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_E_L(struct CPU *cpu) //0x5d
+{
+	cpu->e = cpu->l;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_E_$HL(struct CPU *cpu) //0x5e
+{
+	cpu->e = cpu->rom[cpu->hl];
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_E_A(struct CPU *cpu) //0x5f
+{
+	cpu->e = cpu->a;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_H_B(struct CPU *cpu) //0x60
+{
+	cpu->h = cpu->b;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_H_C(struct CPU *cpu) //0x61
+{
+	cpu->h = cpu->c;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_H_D(struct CPU *cpu) //0x62
+{
+	cpu->h = cpu->d;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_H_E(struct CPU *cpu) //0x63
+{
+	cpu->h = cpu->e;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_H_H(struct CPU *cpu) //0x64
+{
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_H_L(struct CPU *cpu) //0x65
+{
+	cpu->h = cpu->l;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_H_$HL(struct CPU *cpu) //0x66
+{
+	cpu->h = cpu->rom[cpu->hl];
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_H_A(struct CPU *cpu) //0x67
+{
+	cpu->h = cpu->a;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_L_B(struct CPU *cpu) //0x68
+{
+	cpu->l = cpu->b;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_L_C(struct CPU *cpu) //0x69
+{
+	cpu->l = cpu->c;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_L_D(struct CPU *cpu) //0x6a
+{
+	cpu->l = cpu->d;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_L_E(struct CPU *cpu) //0x6b
+{
+	cpu->l = cpu->e;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_L_H(struct CPU *cpu) //0x6c
+{
+	cpu->l = cpu->h;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_L_L(struct CPU *cpu) //0x6d
+{
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_L_$HL(struct CPU *cpu) //0x6e
+{
+	cpu->l = cpu->rom[cpu->hl];
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_L_A(struct CPU *cpu) //0x6f
+{
+	cpu->l = cpu->a;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_$HL_B(struct CPU *cpu) //0x70
+{
+	cpu->rom[cpu->hl] = cpu->b;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_$HL_C(struct CPU *cpu) //0x71
+{
+	cpu->rom[cpu->hl] = cpu->c;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_$HL_D(struct CPU *cpu) //0x72
+{
+	cpu->rom[cpu->hl] = cpu->d;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_$HL_E(struct CPU *cpu) //0x73
+{
+	cpu->rom[cpu->hl] = cpu->e;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_$HL_H(struct CPU *cpu) //0x74
+{
+	cpu->rom[cpu->hl] = cpu->h;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_$HL_L(struct CPU *cpu) //0x75
+{
+	cpu->rom[cpu->hl] = cpu->l;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_halt(struct CPU *cpu) //0x76
+{
+	// TODO Enter CPU low-power consumption mode until an interrupt occurs.
+
+	//The exact behavior of this instruction depends on the state of the IME flag, and whether interrupts are pending (i.e. whether ‘[IE] & [IF]’ is non-zero)
+
+	// if ime and interupts pending
+	// if ime and no interrupts
+	// if no ime and interrupts
+
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_$HL_A(struct CPU *cpu) //0x77
+{
+	cpu->rom[cpu->hl] = cpu->a;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_A_B(struct CPU *cpu) //0x78
+{
+	cpu->a = cpu->b;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_A_C(struct CPU *cpu) //0x79
+{
+	cpu->a = cpu->c;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_A_D(struct CPU *cpu) //0x7a
+{
+	cpu->a = cpu->d;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_A_E(struct CPU *cpu) //0x7b
+{
+	cpu->a = cpu->e;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_A_H(struct CPU *cpu) //0x7c
+{
+	cpu->a = cpu->h;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_A_L(struct CPU *cpu) //0x7d
+{
+	cpu->a = cpu->l;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_A_$HL(struct CPU *cpu) //0x7e
+{
+	cpu->a = cpu->rom[cpu->hl];
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_A_A(struct CPU *cpu) //0x7f
+{
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_xor_A_A(struct CPU *cpu) //0xaf
+{
+	cpu->a ^= cpu->a;
+	cpu->fZ = 1;
+	cpu->fN = 0;
+	cpu->fH = 0;
+	cpu->fC = 0;
+	return cpu->instr->dots[0];
+}
+
 uint8_t op_or_A_A(struct CPU *cpu) //0xb7
 {
-	cpu->a |= cpu->a;
-	cpu->f = 0;
-	cpu->fZ = cpu->a == 0 ? 1 : 0;
+	cpu->fZ = cpu->a == 0;
+	cpu->fN = 0;
+	cpu->fH = 0;
+	cpu->fC = 0;
 	return cpu->instr->dots[0];
 }
 
@@ -88,18 +518,62 @@ uint8_t op_ret_Z(struct CPU *cpu) //0xc8
 	return cpu->instr->dots[0];
 }
 
+uint8_t op_ret(struct CPU *cpu) //0xc9
+{
+	cpu->pc = ld_le16(cpu->rom + cpu->sp);
+	cpu->sp += 2;
+	return cpu->instr->dots[0];
+}
+
 uint8_t op_call_a16(struct CPU *cpu) //0xcd
 {
 	int16_t a16 = ld_le16(cpu->rom + cpu->pc);
 	cpu->pc += 2;
-	cpu->sp -= 2;
-	wr_le16(cpu->rom + cpu->sp, cpu->pc);
+	call(cpu, a16);
+	return cpu->instr->dots[0];
+}
 
-	fprintf(stderr, "pc=0x%04x a16=0x%04x [sp] 0x%04x (0x%04x)", cpu->pc,
-		a16, *(uint16_t *)(cpu->rom + cpu->sp),
-		*(uint16_t *)(&cpu->rom[cpu->sp]));
+uint8_t op_rst_$00(struct CPU *cpu) //0xc7
+{
+	call(cpu, 0x00);
+	return cpu->instr->dots[0];
+}
 
-	cpu->pc = a16;
+uint8_t op_rst_$08(struct CPU *cpu) //0xcf
+{
+	call(cpu, 0x08);
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_rst_$10(struct CPU *cpu) //0xd7
+{
+	call(cpu, 0x10);
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_rst_$18(struct CPU *cpu) //0xdf
+{
+	call(cpu, 0x18);
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_$a8_A(struct CPU *cpu) //0xe0
+{
+	int8_t a8 = cpu->rom[cpu->pc++];
+	cpu->rom[a8] = cpu->a;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_ld_$C_A(struct CPU *cpu) //0xe2
+{
+	int8_t $c = cpu->rom[cpu->pc++];
+	cpu->rom[0xff0 + $c] = cpu->a;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_rst_$20(struct CPU *cpu) //0xe7
+{
+	call(cpu, 0x20);
 	return cpu->instr->dots[0];
 }
 
@@ -111,9 +585,21 @@ uint8_t op_ld_$a16_A(struct CPU *cpu) //0xea
 	return cpu->instr->dots[0];
 }
 
+uint8_t op_rst_$28(struct CPU *cpu) //0xef
+{
+	call(cpu, 0x28);
+	return cpu->instr->dots[0];
+}
+
 uint8_t op_di(struct CPU *cpu) //0xf3
 {
 	cpu->ime = false;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_rst_$30(struct CPU *cpu) //0xf7
+{
+	call(cpu, 0x30);
 	return cpu->instr->dots[0];
 }
 
@@ -138,59 +624,22 @@ uint8_t op_cp_A_n8(struct CPU *cpu) //0xfe
 	return cpu->instr->dots[0];
 }
 
+uint8_t op_rst_$38(struct CPU *cpu) //0xff
+{
+	call(cpu, 0x38);
+	return cpu->instr->dots[0];
+}
+
+// Start cb
+// ===========================================================================
+// ===========================================================================
+// ===========================================================================
+
 static inline void set_u3_$HL(uint8_t *dest, uint8_t n)
 {
 	fprintf(stderr, "[HL] 0b%08b ", *dest);
 	*dest |= (1U << n);
 	fprintf(stderr, "0b%08b ", *dest);
-}
-
-uint8_t cb_set_0_$HL(struct CPU *cpu) //0xc6
-{
-	set_u3_$HL(&cpu->rom[cpu->hl], 0);
-	return cpu->instr->dots[0];
-}
-
-uint8_t cb_set_1_$HL(struct CPU *cpu) //0xce
-{
-	set_u3_$HL(&cpu->rom[cpu->hl], 1);
-	return cpu->instr->dots[0];
-}
-
-uint8_t cb_set_2_$HL(struct CPU *cpu) //0xd6
-{
-	set_u3_$HL(&cpu->rom[cpu->hl], 2);
-	return cpu->instr->dots[0];
-}
-
-uint8_t cb_set_3_$HL(struct CPU *cpu) //0xde
-{
-	set_u3_$HL(&cpu->rom[cpu->hl], 3);
-	return cpu->instr->dots[0];
-}
-
-uint8_t cb_set_4_$HL(struct CPU *cpu) //0xe6
-{
-	set_u3_$HL(&cpu->rom[cpu->hl], 4);
-	return cpu->instr->dots[0];
-}
-
-uint8_t cb_set_5_$HL(struct CPU *cpu) //0xee
-{
-	set_u3_$HL(&cpu->rom[cpu->hl], 5);
-	return cpu->instr->dots[0];
-}
-
-uint8_t cb_set_6_$HL(struct CPU *cpu) //0xf6
-{
-	set_u3_$HL(&cpu->rom[cpu->hl], 6);
-	return cpu->instr->dots[0];
-}
-
-uint8_t cb_set_7_$HL(struct CPU *cpu) //0xfe
-{
-	set_u3_$HL(&cpu->rom[cpu->hl], 7);
-	return cpu->instr->dots[0];
 }
 
 static inline void bit_u3_$HL(struct CPU *cpu, uint8_t n)
@@ -248,6 +697,54 @@ uint8_t cb_bit_6_$HL(struct CPU *cpu) //0x76
 uint8_t cb_bit_7_$HL(struct CPU *cpu) //0x7e
 {
 	bit_u3_$HL(cpu, 7);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_0_$HL(struct CPU *cpu) //0xc6
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 0);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_1_$HL(struct CPU *cpu) //0xce
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 1);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_2_$HL(struct CPU *cpu) //0xd6
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 2);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_3_$HL(struct CPU *cpu) //0xde
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 3);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_4_$HL(struct CPU *cpu) //0xe6
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 4);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_5_$HL(struct CPU *cpu) //0xee
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 5);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_6_$HL(struct CPU *cpu) //0xf6
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 6);
+	return cpu->instr->dots[0];
+}
+
+uint8_t cb_set_7_$HL(struct CPU *cpu) //0xfe
+{
+	set_u3_$HL(&cpu->rom[cpu->hl], 7);
 	return cpu->instr->dots[0];
 }
 
@@ -322,7 +819,11 @@ struct instr cbtbl[256] = {
 	[0x43] = { "*** cb BIT 0,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x43 },
 	[0x44] = { "*** cb BIT 0,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x44 },
 	[0x45] = { "*** cb BIT 0,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x45 },
-	[0x46] = { "*** cb BIT 0,[HL] 2,12 Z01-", NULL, 2, { 12, 12 }, 0x46 },
+	[0x46] = { "*** cb BIT 0,[HL] 2,12 Z01-",
+		   cb_bit_0_$HL,
+		   2,
+		   { 12, 12 },
+		   0x46 },
 	[0x47] = { "*** cb BIT 0,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x47 },
 	[0x48] = { "*** cb BIT 1,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x48 },
 	[0x49] = { "*** cb BIT 1,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x49 },
@@ -330,7 +831,11 @@ struct instr cbtbl[256] = {
 	[0x4B] = { "*** cb BIT 1,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x4B },
 	[0x4C] = { "*** cb BIT 1,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x4C },
 	[0x4D] = { "*** cb BIT 1,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x4D },
-	[0x4E] = { "*** cb BIT 1,[HL] 2,12 Z01-", NULL, 2, { 12, 12 }, 0x4E },
+	[0x4E] = { "*** cb BIT 1,[HL] 2,12 Z01-",
+		   cb_bit_1_$HL,
+		   2,
+		   { 12, 12 },
+		   0x4E },
 	[0x4F] = { "*** cb BIT 1,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x4F },
 	[0x50] = { "*** cb BIT 2,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x50 },
 	[0x51] = { "*** cb BIT 2,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x51 },
@@ -338,7 +843,11 @@ struct instr cbtbl[256] = {
 	[0x53] = { "*** cb BIT 2,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x53 },
 	[0x54] = { "*** cb BIT 2,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x54 },
 	[0x55] = { "*** cb BIT 2,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x55 },
-	[0x56] = { "*** cb BIT 2,[HL] 2,12 Z01-", NULL, 2, { 12, 12 }, 0x56 },
+	[0x56] = { "*** cb BIT 2,[HL] 2,12 Z01-",
+		   cb_bit_2_$HL,
+		   2,
+		   { 12, 12 },
+		   0x56 },
 	[0x57] = { "*** cb BIT 2,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x57 },
 	[0x58] = { "*** cb BIT 3,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x58 },
 	[0x59] = { "*** cb BIT 3,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x59 },
@@ -346,7 +855,11 @@ struct instr cbtbl[256] = {
 	[0x5B] = { "*** cb BIT 3,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x5B },
 	[0x5C] = { "*** cb BIT 3,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x5C },
 	[0x5D] = { "*** cb BIT 3,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x5D },
-	[0x5E] = { "*** cb BIT 3,[HL] 2,12 Z01-", NULL, 2, { 12, 12 }, 0x5E },
+	[0x5E] = { "*** cb BIT 3,[HL] 2,12 Z01-",
+		   cb_bit_3_$HL,
+		   2,
+		   { 12, 12 },
+		   0x5E },
 	[0x5F] = { "*** cb BIT 3,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x5F },
 	[0x60] = { "*** cb BIT 4,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x60 },
 	[0x61] = { "*** cb BIT 4,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x61 },
@@ -354,7 +867,11 @@ struct instr cbtbl[256] = {
 	[0x63] = { "*** cb BIT 4,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x63 },
 	[0x64] = { "*** cb BIT 4,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x64 },
 	[0x65] = { "*** cb BIT 4,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x65 },
-	[0x66] = { "*** cb BIT 4,[HL] 2,12 Z01-", NULL, 2, { 12, 12 }, 0x66 },
+	[0x66] = { "*** cb BIT 4,[HL] 2,12 Z01-",
+		   cb_bit_4_$HL,
+		   2,
+		   { 12, 12 },
+		   0x66 },
 	[0x67] = { "*** cb BIT 4,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x67 },
 	[0x68] = { "*** cb BIT 5,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x68 },
 	[0x69] = { "*** cb BIT 5,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x69 },
@@ -362,7 +879,11 @@ struct instr cbtbl[256] = {
 	[0x6B] = { "*** cb BIT 5,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x6B },
 	[0x6C] = { "*** cb BIT 5,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x6C },
 	[0x6D] = { "*** cb BIT 5,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x6D },
-	[0x6E] = { "*** cb BIT 5,[HL] 2,12 Z01-", NULL, 2, { 12, 12 }, 0x6E },
+	[0x6E] = { "*** cb BIT 5,[HL] 2,12 Z01-",
+		   cb_bit_5_$HL,
+		   2,
+		   { 12, 12 },
+		   0x6E },
 	[0x6F] = { "*** cb BIT 5,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x6F },
 	[0x70] = { "*** cb BIT 6,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x70 },
 	[0x71] = { "*** cb BIT 6,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x71 },
@@ -370,7 +891,11 @@ struct instr cbtbl[256] = {
 	[0x73] = { "*** cb BIT 6,E 2,8 Z01-", NULL, 2, { 8, 8 }, 0x73 },
 	[0x74] = { "*** cb BIT 6,H 2,8 Z01-", NULL, 2, { 8, 8 }, 0x74 },
 	[0x75] = { "*** cb BIT 6,L 2,8 Z01-", NULL, 2, { 8, 8 }, 0x75 },
-	[0x76] = { "*** cb BIT 6,[HL] 2,12 Z01-", NULL, 2, { 12, 12 }, 0x76 },
+	[0x76] = { "*** cb BIT 6,[HL] 2,12 Z01-",
+		   cb_bit_6_$HL,
+		   2,
+		   { 12, 12 },
+		   0x76 },
 	[0x77] = { "*** cb BIT 6,A 2,8 Z01-", NULL, 2, { 8, 8 }, 0x77 },
 	[0x78] = { "*** cb BIT 7,B 2,8 Z01-", NULL, 2, { 8, 8 }, 0x78 },
 	[0x79] = { "*** cb BIT 7,C 2,8 Z01-", NULL, 2, { 8, 8 }, 0x79 },
@@ -462,7 +987,7 @@ struct instr cbtbl[256] = {
 	[0xCB] = { "*** cb SET 1,E 2,8", NULL, 2, { 8, 8 }, 0xCB },
 	[0xCC] = { "*** cb SET 1,H 2,8", NULL, 2, { 8, 8 }, 0xCC },
 	[0xCD] = { "*** cb SET 1,L 2,8", NULL, 2, { 8, 8 }, 0xCD },
-	[0xCE] = { "*** cb SET 1,[HL] 2,16", NULL, 2, { 16, 16 }, 0xCE },
+	[0xCE] = { "*** cb SET 1,[HL] 2,16", cb_set_1_$HL, 2, { 16, 16 }, 0xCE },
 	[0xCF] = { "*** cb SET 1,A 2,8", NULL, 2, { 8, 8 }, 0xCF },
 	[0xD0] = { "*** cb SET 2,B 2,8", NULL, 2, { 8, 8 }, 0xD0 },
 	[0xD1] = { "*** cb SET 2,C 2,8", NULL, 2, { 8, 8 }, 0xD1 },
@@ -470,7 +995,7 @@ struct instr cbtbl[256] = {
 	[0xD3] = { "*** cb SET 2,E 2,8", NULL, 2, { 8, 8 }, 0xD3 },
 	[0xD4] = { "*** cb SET 2,H 2,8", NULL, 2, { 8, 8 }, 0xD4 },
 	[0xD5] = { "*** cb SET 2,L 2,8", NULL, 2, { 8, 8 }, 0xD5 },
-	[0xD6] = { "*** cb SET 2,[HL] 2,16", NULL, 2, { 16, 16 }, 0xD6 },
+	[0xD6] = { "*** cb SET 2,[HL] 2,16", cb_set_2_$HL, 2, { 16, 16 }, 0xD6 },
 	[0xD7] = { "*** cb SET 2,A 2,8", NULL, 2, { 8, 8 }, 0xD7 },
 	[0xD8] = { "*** cb SET 3,B 2,8", NULL, 2, { 8, 8 }, 0xD8 },
 	[0xD9] = { "*** cb SET 3,C 2,8", NULL, 2, { 8, 8 }, 0xD9 },
@@ -478,7 +1003,7 @@ struct instr cbtbl[256] = {
 	[0xDB] = { "*** cb SET 3,E 2,8", NULL, 2, { 8, 8 }, 0xDB },
 	[0xDC] = { "*** cb SET 3,H 2,8", NULL, 2, { 8, 8 }, 0xDC },
 	[0xDD] = { "*** cb SET 3,L 2,8", NULL, 2, { 8, 8 }, 0xDD },
-	[0xDE] = { "*** cb SET 3,[HL] 2,16", NULL, 2, { 16, 16 }, 0xDE },
+	[0xDE] = { "*** cb SET 3,[HL] 2,16", cb_set_3_$HL, 2, { 16, 16 }, 0xDE },
 	[0xDF] = { "*** cb SET 3,A 2,8", NULL, 2, { 8, 8 }, 0xDF },
 	[0xE0] = { "*** cb SET 4,B 2,8", NULL, 2, { 8, 8 }, 0xE0 },
 	[0xE1] = { "*** cb SET 4,C 2,8", NULL, 2, { 8, 8 }, 0xE1 },
@@ -486,7 +1011,7 @@ struct instr cbtbl[256] = {
 	[0xE3] = { "*** cb SET 4,E 2,8", NULL, 2, { 8, 8 }, 0xE3 },
 	[0xE4] = { "*** cb SET 4,H 2,8", NULL, 2, { 8, 8 }, 0xE4 },
 	[0xE5] = { "*** cb SET 4,L 2,8", NULL, 2, { 8, 8 }, 0xE5 },
-	[0xE6] = { "*** cb SET 4,[HL] 2,16", NULL, 2, { 16, 16 }, 0xE6 },
+	[0xE6] = { "*** cb SET 4,[HL] 2,16", cb_set_4_$HL, 2, { 16, 16 }, 0xE6 },
 	[0xE7] = { "*** cb SET 4,A 2,8", NULL, 2, { 8, 8 }, 0xE7 },
 	[0xE8] = { "*** cb SET 5,B 2,8", NULL, 2, { 8, 8 }, 0xE8 },
 	[0xE9] = { "*** cb SET 5,C 2,8", NULL, 2, { 8, 8 }, 0xE9 },
@@ -494,7 +1019,7 @@ struct instr cbtbl[256] = {
 	[0xEB] = { "*** cb SET 5,E 2,8", NULL, 2, { 8, 8 }, 0xEB },
 	[0xEC] = { "*** cb SET 5,H 2,8", NULL, 2, { 8, 8 }, 0xEC },
 	[0xED] = { "*** cb SET 5,L 2,8", NULL, 2, { 8, 8 }, 0xED },
-	[0xEE] = { "*** cb SET 5,[HL] 2,16", NULL, 2, { 16, 16 }, 0xEE },
+	[0xEE] = { "*** cb SET 5,[HL] 2,16", cb_set_5_$HL, 2, { 16, 16 }, 0xEE },
 	[0xEF] = { "*** cb SET 5,A 2,8", NULL, 2, { 8, 8 }, 0xEF },
 	[0xF0] = { "*** cb SET 6,B 2,8", NULL, 2, { 8, 8 }, 0xF0 },
 	[0xF1] = { "*** cb SET 6,C 2,8", NULL, 2, { 8, 8 }, 0xF1 },
@@ -502,7 +1027,7 @@ struct instr cbtbl[256] = {
 	[0xF3] = { "*** cb SET 6,E 2,8", NULL, 2, { 8, 8 }, 0xF3 },
 	[0xF4] = { "*** cb SET 6,H 2,8", NULL, 2, { 8, 8 }, 0xF4 },
 	[0xF5] = { "*** cb SET 6,L 2,8", NULL, 2, { 8, 8 }, 0xF5 },
-	[0xF6] = { "*** cb SET 6,[HL] 2,16", NULL, 2, { 16, 16 }, 0xF6 },
+	[0xF6] = { "*** cb SET 6,[HL] 2,16", cb_set_6_$HL, 2, { 16, 16 }, 0xF6 },
 	[0xF7] = { "*** cb SET 6,A 2,8", NULL, 2, { 8, 8 }, 0xF7 },
 	[0xF8] = { "*** cb SET 7,B 2,8", NULL, 2, { 8, 8 }, 0xF8 },
 	[0xF9] = { "*** cb SET 7,C 2,8", NULL, 2, { 8, 8 }, 0xF9 },
@@ -510,7 +1035,7 @@ struct instr cbtbl[256] = {
 	[0xFB] = { "*** cb SET 7,E 2,8", NULL, 2, { 8, 8 }, 0xFB },
 	[0xFC] = { "*** cb SET 7,H 2,8", NULL, 2, { 8, 8 }, 0xFC },
 	[0xFD] = { "*** cb SET 7,L 2,8", NULL, 2, { 8, 8 }, 0xFD },
-	[0xFE] = { "*** cb SET 7,[HL] 2,16", NULL, 2, { 16, 16 }, 0xFE },
+	[0xFE] = { "*** cb SET 7,[HL] 2,16", cb_set_7_$HL, 2, { 16, 16 }, 0xFE },
 	[0xFF] = { "*** cb SET 7,A 2,8", NULL, 2, { 8, 8 }, 0xFF },
 };
 
@@ -533,7 +1058,7 @@ struct instr optbl[256] = {
 	[0x03] = { "INC BC 1,8", NULL, 1, { 8, 8 }, 0x03 },
 	[0x04] = { "INC B 1,4 Z0H-", NULL, 1, { 4, 4 }, 0x04 },
 	[0x05] = { "DEC B 1,4 Z1H-", NULL, 1, { 4, 4 }, 0x05 },
-	[0x06] = { "LD B,n8 2,8", NULL, 2, { 8, 8 }, 0x06 },
+	[0x06] = { "LD B,n8 2,8", op_ld_B_n8, 2, { 8, 8 }, 0x06 },
 	[0x07] = { "RLCA 1,4 000C", NULL, 1, { 4, 4 }, 0x07 },
 	[0x08] = { "LD [a16],SP 3,20", NULL, 3, { 20, 20 }, 0x08 },
 	[0x09] = { "ADD HL,BC 1,8 -0HC", NULL, 1, { 8, 8 }, 0x09 },
@@ -543,7 +1068,7 @@ struct instr optbl[256] = {
 	[0x0D] = { "DEC C 1,4 Z1H-", NULL, 1, { 4, 4 }, 0x0D },
 	[0x0E] = { "LD C,n8 2,8", NULL, 2, { 8, 8 }, 0x0E },
 	[0x0F] = { "RRCA 1,4 000C", NULL, 1, { 4, 4 }, 0x0F },
-	[0x10] = { "STOP n8 2,4", NULL, 2, { 4, 4 }, 0x10 },
+	[0x10] = { "STOP n8 2,4", op_stop, 2, { 4, 4 }, 0x10 },
 	[0x11] = { "LD DE,n16 3,12", NULL, 3, { 12, 12 }, 0x11 },
 	[0x12] = { "LD [DE],A 1,8", NULL, 1, { 8, 8 }, 0x12 },
 	[0x13] = { "INC DE 1,8", NULL, 1, { 8, 8 }, 0x13 },
@@ -551,7 +1076,7 @@ struct instr optbl[256] = {
 	[0x15] = { "DEC D 1,4 Z1H-", NULL, 1, { 4, 4 }, 0x15 },
 	[0x16] = { "LD D,n8 2,8", NULL, 2, { 8, 8 }, 0x16 },
 	[0x17] = { "RLA 1,4 000C", NULL, 1, { 4, 4 }, 0x17 },
-	[0x18] = { "JR e8 2,12", NULL, 2, { 12, 12 }, 0x18 },
+	[0x18] = { "JR e8 2,12", op_jr_e8, 2, { 12, 12 }, 0x18 },
 	[0x19] = { "ADD HL,DE 1,8 -0HC", NULL, 1, { 8, 8 }, 0x19 },
 	[0x1A] = { "LD A,[DE] 1,8", NULL, 1, { 8, 8 }, 0x1A },
 	[0x1B] = { "DEC DE 1,8", NULL, 1, { 8, 8 }, 0x1B },
@@ -591,70 +1116,70 @@ struct instr optbl[256] = {
 	[0x3D] = { "DEC A 1,4 Z1H-", NULL, 1, { 4, 4 }, 0x3D },
 	[0x3E] = { "LD A,n8 2,8", op_ld_A_n8, 2, { 8, 8 }, 0x3E },
 	[0x3F] = { "CCF 1,4 -00C", NULL, 1, { 4, 4 }, 0x3F },
-	[0x40] = { "LD B,B 1,4", NULL, 1, { 4, 4 }, 0x40 },
-	[0x41] = { "LD B,C 1,4", NULL, 1, { 4, 4 }, 0x41 },
-	[0x42] = { "LD B,D 1,4", NULL, 1, { 4, 4 }, 0x42 },
-	[0x43] = { "LD B,E 1,4", NULL, 1, { 4, 4 }, 0x43 },
-	[0x44] = { "LD B,H 1,4", NULL, 1, { 4, 4 }, 0x44 },
-	[0x45] = { "LD B,L 1,4", NULL, 1, { 4, 4 }, 0x45 },
-	[0x46] = { "LD B,[HL] 1,8", NULL, 1, { 8, 8 }, 0x46 },
-	[0x47] = { "LD B,A 1,4", NULL, 1, { 4, 4 }, 0x47 },
-	[0x48] = { "LD C,B 1,4", NULL, 1, { 4, 4 }, 0x48 },
-	[0x49] = { "LD C,C 1,4", NULL, 1, { 4, 4 }, 0x49 },
-	[0x4A] = { "LD C,D 1,4", NULL, 1, { 4, 4 }, 0x4A },
-	[0x4B] = { "LD C,E 1,4", NULL, 1, { 4, 4 }, 0x4B },
-	[0x4C] = { "LD C,H 1,4", NULL, 1, { 4, 4 }, 0x4C },
-	[0x4D] = { "LD C,L 1,4", NULL, 1, { 4, 4 }, 0x4D },
-	[0x4E] = { "LD C,[HL] 1,8", NULL, 1, { 8, 8 }, 0x4E },
-	[0x4F] = { "LD C,A 1,4", NULL, 1, { 4, 4 }, 0x4F },
-	[0x50] = { "LD D,B 1,4", NULL, 1, { 4, 4 }, 0x50 },
-	[0x51] = { "LD D,C 1,4", NULL, 1, { 4, 4 }, 0x51 },
-	[0x52] = { "LD D,D 1,4", NULL, 1, { 4, 4 }, 0x52 },
-	[0x53] = { "LD D,E 1,4", NULL, 1, { 4, 4 }, 0x53 },
-	[0x54] = { "LD D,H 1,4", NULL, 1, { 4, 4 }, 0x54 },
-	[0x55] = { "LD D,L 1,4", NULL, 1, { 4, 4 }, 0x55 },
-	[0x56] = { "LD D,[HL] 1,8", NULL, 1, { 8, 8 }, 0x56 },
-	[0x57] = { "LD D,A 1,4", NULL, 1, { 4, 4 }, 0x57 },
-	[0x58] = { "LD E,B 1,4", NULL, 1, { 4, 4 }, 0x58 },
-	[0x59] = { "LD E,C 1,4", NULL, 1, { 4, 4 }, 0x59 },
-	[0x5A] = { "LD E,D 1,4", NULL, 1, { 4, 4 }, 0x5A },
-	[0x5B] = { "LD E,E 1,4", NULL, 1, { 4, 4 }, 0x5B },
-	[0x5C] = { "LD E,H 1,4", NULL, 1, { 4, 4 }, 0x5C },
-	[0x5D] = { "LD E,L 1,4", NULL, 1, { 4, 4 }, 0x5D },
-	[0x5E] = { "LD E,[HL] 1,8", NULL, 1, { 8, 8 }, 0x5E },
-	[0x5F] = { "LD E,A 1,4", NULL, 1, { 4, 4 }, 0x5F },
-	[0x60] = { "LD H,B 1,4", NULL, 1, { 4, 4 }, 0x60 },
-	[0x61] = { "LD H,C 1,4", NULL, 1, { 4, 4 }, 0x61 },
-	[0x62] = { "LD H,D 1,4", NULL, 1, { 4, 4 }, 0x62 },
-	[0x63] = { "LD H,E 1,4", NULL, 1, { 4, 4 }, 0x63 },
-	[0x64] = { "LD H,H 1,4", NULL, 1, { 4, 4 }, 0x64 },
-	[0x65] = { "LD H,L 1,4", NULL, 1, { 4, 4 }, 0x65 },
-	[0x66] = { "LD H,[HL] 1,8", NULL, 1, { 8, 8 }, 0x66 },
-	[0x67] = { "LD H,A 1,4", NULL, 1, { 4, 4 }, 0x67 },
-	[0x68] = { "LD L,B 1,4", NULL, 1, { 4, 4 }, 0x68 },
-	[0x69] = { "LD L,C 1,4", NULL, 1, { 4, 4 }, 0x69 },
-	[0x6A] = { "LD L,D 1,4", NULL, 1, { 4, 4 }, 0x6A },
-	[0x6B] = { "LD L,E 1,4", NULL, 1, { 4, 4 }, 0x6B },
-	[0x6C] = { "LD L,H 1,4", NULL, 1, { 4, 4 }, 0x6C },
-	[0x6D] = { "LD L,L 1,4", NULL, 1, { 4, 4 }, 0x6D },
-	[0x6E] = { "LD L,[HL] 1,8", NULL, 1, { 8, 8 }, 0x6E },
-	[0x6F] = { "LD L,A 1,4", NULL, 1, { 4, 4 }, 0x6F },
-	[0x70] = { "LD [HL],B 1,8", NULL, 1, { 8, 8 }, 0x70 },
-	[0x71] = { "LD [HL],C 1,8", NULL, 1, { 8, 8 }, 0x71 },
-	[0x72] = { "LD [HL],D 1,8", NULL, 1, { 8, 8 }, 0x72 },
-	[0x73] = { "LD [HL],E 1,8", NULL, 1, { 8, 8 }, 0x73 },
-	[0x74] = { "LD [HL],H 1,8", NULL, 1, { 8, 8 }, 0x74 },
-	[0x75] = { "LD [HL],L 1,8", NULL, 1, { 8, 8 }, 0x75 },
+	[0x40] = { "LD B,B 1,4", op_ld_B_B, 1, { 4, 4 }, 0x40 },
+	[0x41] = { "LD B,C 1,4", op_ld_B_C, 1, { 4, 4 }, 0x41 },
+	[0x42] = { "LD B,D 1,4", op_ld_B_D, 1, { 4, 4 }, 0x42 },
+	[0x43] = { "LD B,E 1,4", op_ld_B_E, 1, { 4, 4 }, 0x43 },
+	[0x44] = { "LD B,H 1,4", op_ld_B_H, 1, { 4, 4 }, 0x44 },
+	[0x45] = { "LD B,L 1,4", op_ld_B_L, 1, { 4, 4 }, 0x45 },
+	[0x46] = { "LD B,[HL] 1,8", op_ld_B_$HL, 1, { 8, 8 }, 0x46 },
+	[0x47] = { "LD B,A 1,4", op_ld_B_A, 1, { 4, 4 }, 0x47 },
+	[0x48] = { "LD C,B 1,4", op_ld_C_B, 1, { 4, 4 }, 0x48 },
+	[0x49] = { "LD C,C 1,4", op_ld_C_C, 1, { 4, 4 }, 0x49 },
+	[0x4A] = { "LD C,D 1,4", op_ld_C_D, 1, { 4, 4 }, 0x4A },
+	[0x4B] = { "LD C,E 1,4", op_ld_C_E, 1, { 4, 4 }, 0x4B },
+	[0x4C] = { "LD C,H 1,4", op_ld_C_H, 1, { 4, 4 }, 0x4C },
+	[0x4D] = { "LD C,L 1,4", op_ld_C_L, 1, { 4, 4 }, 0x4D },
+	[0x4E] = { "LD C,[HL] 1,8", op_ld_C_$HL, 1, { 8, 8 }, 0x4E },
+	[0x4F] = { "LD C,A 1,4", op_ld_C_A, 1, { 4, 4 }, 0x4F },
+	[0x50] = { "LD D,B 1,4", op_ld_D_B, 1, { 4, 4 }, 0x50 },
+	[0x51] = { "LD D,C 1,4", op_ld_D_C, 1, { 4, 4 }, 0x51 },
+	[0x52] = { "LD D,D 1,4", op_ld_D_D, 1, { 4, 4 }, 0x52 },
+	[0x53] = { "LD D,E 1,4", op_ld_D_E, 1, { 4, 4 }, 0x53 },
+	[0x54] = { "LD D,H 1,4", op_ld_D_H, 1, { 4, 4 }, 0x54 },
+	[0x55] = { "LD D,L 1,4", op_ld_D_L, 1, { 4, 4 }, 0x55 },
+	[0x56] = { "LD D,[HL] 1,8", op_ld_D_$HL, 1, { 8, 8 }, 0x56 },
+	[0x57] = { "LD D,A 1,4", op_ld_D_A, 1, { 4, 4 }, 0x57 },
+	[0x58] = { "LD E,B 1,4", op_ld_E_B, 1, { 4, 4 }, 0x58 },
+	[0x59] = { "LD E,C 1,4", op_ld_E_C, 1, { 4, 4 }, 0x59 },
+	[0x5A] = { "LD E,D 1,4", op_ld_E_D, 1, { 4, 4 }, 0x5A },
+	[0x5B] = { "LD E,E 1,4", op_ld_E_E, 1, { 4, 4 }, 0x5B },
+	[0x5C] = { "LD E,H 1,4", op_ld_E_H, 1, { 4, 4 }, 0x5C },
+	[0x5D] = { "LD E,L 1,4", op_ld_E_L, 1, { 4, 4 }, 0x5D },
+	[0x5E] = { "LD E,[HL] 1,8", op_ld_E_$HL, 1, { 8, 8 }, 0x5E },
+	[0x5F] = { "LD E,A 1,4", op_ld_E_A, 1, { 4, 4 }, 0x5F },
+	[0x60] = { "LD H,B 1,4", op_ld_H_B, 1, { 4, 4 }, 0x60 },
+	[0x61] = { "LD H,C 1,4", op_ld_H_C, 1, { 4, 4 }, 0x61 },
+	[0x62] = { "LD H,D 1,4", op_ld_H_D, 1, { 4, 4 }, 0x62 },
+	[0x63] = { "LD H,E 1,4", op_ld_H_E, 1, { 4, 4 }, 0x63 },
+	[0x64] = { "LD H,H 1,4", op_ld_H_H, 1, { 4, 4 }, 0x64 },
+	[0x65] = { "LD H,L 1,4", op_ld_H_L, 1, { 4, 4 }, 0x65 },
+	[0x66] = { "LD H,[HL] 1,8", op_ld_H_L, 1, { 8, 8 }, 0x66 },
+	[0x67] = { "LD H,A 1,4", op_ld_H_A, 1, { 4, 4 }, 0x67 },
+	[0x68] = { "LD L,B 1,4", op_ld_L_B, 1, { 4, 4 }, 0x68 },
+	[0x69] = { "LD L,C 1,4", op_ld_L_C, 1, { 4, 4 }, 0x69 },
+	[0x6A] = { "LD L,D 1,4", op_ld_L_D, 1, { 4, 4 }, 0x6A },
+	[0x6B] = { "LD L,E 1,4", op_ld_L_E, 1, { 4, 4 }, 0x6B },
+	[0x6C] = { "LD L,H 1,4", op_ld_L_H, 1, { 4, 4 }, 0x6C },
+	[0x6D] = { "LD L,L 1,4", op_ld_L_L, 1, { 4, 4 }, 0x6D },
+	[0x6E] = { "LD L,[HL] 1,8", op_ld_L_$HL, 1, { 8, 8 }, 0x6E },
+	[0x6F] = { "LD L,A 1,4", op_ld_L_A, 1, { 4, 4 }, 0x6F },
+	[0x70] = { "LD [HL],B 1,8", op_ld_$HL_B, 1, { 8, 8 }, 0x70 },
+	[0x71] = { "LD [HL],C 1,8", op_ld_$HL_C, 1, { 8, 8 }, 0x71 },
+	[0x72] = { "LD [HL],D 1,8", op_ld_$HL_D, 1, { 8, 8 }, 0x72 },
+	[0x73] = { "LD [HL],E 1,8", op_ld_$HL_E, 1, { 8, 8 }, 0x73 },
+	[0x74] = { "LD [HL],H 1,8", op_ld_$HL_H, 1, { 8, 8 }, 0x74 },
+	[0x75] = { "LD [HL],L 1,8", op_ld_$HL_L, 1, { 8, 8 }, 0x75 },
 	[0x76] = { "HALT 1,4", NULL, 1, { 4, 4 }, 0x76 },
-	[0x77] = { "LD [HL],A 1,8", NULL, 1, { 8, 8 }, 0x77 },
-	[0x78] = { "LD A,B 1,4", NULL, 1, { 4, 4 }, 0x78 },
-	[0x79] = { "LD A,C 1,4", NULL, 1, { 4, 4 }, 0x79 },
-	[0x7A] = { "LD A,D 1,4", NULL, 1, { 4, 4 }, 0x7A },
-	[0x7B] = { "LD A,E 1,4", NULL, 1, { 4, 4 }, 0x7B },
-	[0x7C] = { "LD A,H 1,4", NULL, 1, { 4, 4 }, 0x7C },
-	[0x7D] = { "LD A,L 1,4", NULL, 1, { 4, 4 }, 0x7D },
-	[0x7E] = { "LD A,[HL] 1,8", NULL, 1, { 8, 8 }, 0x7E },
-	[0x7F] = { "LD A,A 1,4", NULL, 1, { 4, 4 }, 0x7F },
+	[0x77] = { "LD [HL],A 1,8", op_ld_$HL_L, 1, { 8, 8 }, 0x77 },
+	[0x78] = { "LD A,B 1,4", op_ld_A_B, 1, { 4, 4 }, 0x78 },
+	[0x79] = { "LD A,C 1,4", op_ld_A_C, 1, { 4, 4 }, 0x79 },
+	[0x7A] = { "LD A,D 1,4", op_ld_A_D, 1, { 4, 4 }, 0x7A },
+	[0x7B] = { "LD A,E 1,4", op_ld_A_E, 1, { 4, 4 }, 0x7B },
+	[0x7C] = { "LD A,H 1,4", op_ld_A_H, 1, { 4, 4 }, 0x7C },
+	[0x7D] = { "LD A,L 1,4", op_ld_A_L, 1, { 4, 4 }, 0x7D },
+	[0x7E] = { "LD A,[HL] 1,8", op_ld_A_$HL, 1, { 8, 8 }, 0x7E },
+	[0x7F] = { "LD A,A 1,4", op_ld_A_A, 1, { 4, 4 }, 0x7F },
 	[0x80] = { "ADD A,B 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x80 },
 	[0x81] = { "ADD A,C 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x81 },
 	[0x82] = { "ADD A,D 1,4 Z0HC", NULL, 1, { 4, 4 }, 0x82 },
@@ -702,7 +1227,7 @@ struct instr optbl[256] = {
 	[0xAC] = { "XOR A,H 1,4 Z000", NULL, 1, { 4, 4 }, 0xAC },
 	[0xAD] = { "XOR A,L 1,4 Z000", NULL, 1, { 4, 4 }, 0xAD },
 	[0xAE] = { "XOR A,[HL] 1,8 Z000", NULL, 1, { 8, 8 }, 0xAE },
-	[0xAF] = { "XOR A,A 1,4 1000", NULL, 1, { 4, 4 }, 0xAF },
+	[0xAF] = { "XOR A,A 1,4 1000", op_xor_A_A, 1, { 4, 4 }, 0xAF },
 	[0xB0] = { "OR A,B 1,4 Z000", NULL, 1, { 4, 4 }, 0xB0 },
 	[0xB1] = { "OR A,C 1,4 Z000", NULL, 1, { 4, 4 }, 0xB1 },
 	[0xB2] = { "OR A,D 1,4 Z000", NULL, 1, { 4, 4 }, 0xB2 },
@@ -726,15 +1251,15 @@ struct instr optbl[256] = {
 	[0xC4] = { "CALL NZ,a16 3,24/12", NULL, 3, { 24, 12 }, 0xC4 },
 	[0xC5] = { "PUSH BC 1,16", NULL, 1, { 16, 16 }, 0xC5 },
 	[0xC6] = { "ADD A,n8 2,8 Z0HC", NULL, 2, { 8, 8 }, 0xC6 },
-	[0xC7] = { "RST $00 1,16", NULL, 1, { 16, 16 }, 0xC7 },
+	[0xC7] = { "RST $00 1,16", op_rst_$00, 1, { 16, 16 }, 0xC7 },
 	[0xC8] = { "RET Z 1,20/8", op_ret_Z, 1, { 20, 8 }, 0xC8 },
-	[0xC9] = { "RET 1,16", NULL, 1, { 16, 16 }, 0xC9 },
+	[0xC9] = { "RET 1,16", op_ret, 1, { 16, 16 }, 0xC9 },
 	[0xCA] = { "JP Z,a16 3,16/12", NULL, 3, { 16, 12 }, 0xCA },
 	[0xCB] = { "PREFIX 1,4", NULL, 1, { 4, 4 }, 0xCB },
 	[0xCC] = { "CALL Z,a16 3,24/12", NULL, 3, { 24, 12 }, 0xCC },
 	[0xCD] = { "CALL a16 3,24", op_call_a16, 3, { 24, 24 }, 0xCD },
 	[0xCE] = { "ADC A,n8 2,8 Z0HC", NULL, 2, { 8, 8 }, 0xCE },
-	[0xCF] = { "RST $08 1,16", NULL, 1, { 16, 16 }, 0xCF },
+	[0xCF] = { "RST $08 1,16", op_rst_$08, 1, { 16, 16 }, 0xCF },
 	[0xD0] = { "RET NC 1,20/8", NULL, 1, { 20, 8 }, 0xD0 },
 	[0xD1] = { "POP DE 1,12", NULL, 1, { 12, 12 }, 0xD1 },
 	[0xD2] = { "JP NC,a16 3,16/12", NULL, 3, { 16, 12 }, 0xD2 },
@@ -742,7 +1267,7 @@ struct instr optbl[256] = {
 	[0xD4] = { "CALL NC,a16 3,24/12", NULL, 3, { 24, 12 }, 0xD4 },
 	[0xD5] = { "PUSH DE 1,16", NULL, 1, { 16, 16 }, 0xD5 },
 	[0xD6] = { "SUB A,n8 2,8 Z1HC", NULL, 2, { 8, 8 }, 0xD6 },
-	[0xD7] = { "RST $10 1,16", NULL, 1, { 16, 16 }, 0xD7 },
+	[0xD7] = { "RST $10 1,16", op_rst_$10, 1, { 16, 16 }, 0xD7 },
 	[0xD8] = { "RET C 1,20/8", NULL, 1, { 20, 8 }, 0xD8 },
 	[0xD9] = { "RETI 1,16", NULL, 1, { 16, 16 }, 0xD9 },
 	[0xDA] = { "JP C,a16 3,16/12", NULL, 3, { 16, 12 }, 0xDA },
@@ -750,15 +1275,15 @@ struct instr optbl[256] = {
 	[0xDC] = { "CALL C,a16 3,24/12", NULL, 3, { 24, 12 }, 0xDC },
 	[0xDD] = { "ILLEGAL_DD 1,4", NULL, 1, { 4, 4 }, 0xDD },
 	[0xDE] = { "SBC A,n8 2,8 Z1HC", NULL, 2, { 8, 8 }, 0xDE },
-	[0xDF] = { "RST $18 1,16", NULL, 1, { 16, 16 }, 0xDF },
-	[0xE0] = { "LDH [a8],A 2,12", NULL, 2, { 12, 12 }, 0xE0 },
+	[0xDF] = { "RST $18 1,16", op_rst_$18, 1, { 16, 16 }, 0xDF },
+	[0xE0] = { "LDH [a8],A 2,12", op_ld_$a8_A, 2, { 12, 12 }, 0xE0 },
 	[0xE1] = { "POP HL 1,12", NULL, 1, { 12, 12 }, 0xE1 },
 	[0xE2] = { "LDH [C],A 1,8", NULL, 1, { 8, 8 }, 0xE2 },
 	[0xE3] = { "ILLEGAL_E3 1,4", NULL, 1, { 4, 4 }, 0xE3 },
 	[0xE4] = { "ILLEGAL_E4 1,4", NULL, 1, { 4, 4 }, 0xE4 },
 	[0xE5] = { "PUSH HL 1,16", NULL, 1, { 16, 16 }, 0xE5 },
 	[0xE6] = { "AND A,n8 2,8 Z010", NULL, 2, { 8, 8 }, 0xE6 },
-	[0xE7] = { "RST $20 1,16", NULL, 1, { 16, 16 }, 0xE7 },
+	[0xE7] = { "RST $20 1,16", op_rst_$20, 1, { 16, 16 }, 0xE7 },
 	[0xE8] = { "ADD SP,e8 2,16 00HC", NULL, 2, { 16, 16 }, 0xE8 },
 	[0xE9] = { "JP HL 1,4", NULL, 1, { 4, 4 }, 0xE9 },
 	[0xEA] = { "LD [a16],A 3,16", op_ld_$a16_A, 3, { 16, 16 }, 0xEA },
@@ -766,7 +1291,7 @@ struct instr optbl[256] = {
 	[0xEC] = { "ILLEGAL_EC 1,4", NULL, 1, { 4, 4 }, 0xEC },
 	[0xED] = { "ILLEGAL_ED 1,4", NULL, 1, { 4, 4 }, 0xED },
 	[0xEE] = { "XOR A,n8 2,8 Z000", NULL, 2, { 8, 8 }, 0xEE },
-	[0xEF] = { "RST $28 1,16", NULL, 1, { 16, 16 }, 0xEF },
+	[0xEF] = { "RST $28 1,16", op_rst_$28, 1, { 16, 16 }, 0xEF },
 	[0xF0] = { "LDH A,[a8] 2,12", NULL, 2, { 12, 12 }, 0xF0 },
 	[0xF1] = { "POP AF 1,12 ZNHC", NULL, 1, { 12, 12 }, 0xF1 },
 	[0xF2] = { "LDH A,[C] 1,8", NULL, 1, { 8, 8 }, 0xF2 },
@@ -774,7 +1299,7 @@ struct instr optbl[256] = {
 	[0xF4] = { "ILLEGAL_F4 1,4", NULL, 1, { 4, 4 }, 0xF4 },
 	[0xF5] = { "PUSH AF 1,16", NULL, 1, { 16, 16 }, 0xF5 },
 	[0xF6] = { "OR A,n8 2,8 Z000", NULL, 2, { 8, 8 }, 0xF6 },
-	[0xF7] = { "RST $30 1,16", NULL, 1, { 16, 16 }, 0xF7 },
+	[0xF7] = { "RST $30 1,16", op_rst_$30, 1, { 16, 16 }, 0xF7 },
 	[0xF8] = { "LD HL,SP,e8 2,12 00HC", NULL, 2, { 12, 12 }, 0xF8 },
 	[0xF9] = { "LD SP,HL 1,8", NULL, 1, { 8, 8 }, 0xF9 },
 	[0xFA] = { "LD A,[a16] 3,16", op_ld_A_$a16, 3, { 16, 16 }, 0xFA },
@@ -782,7 +1307,7 @@ struct instr optbl[256] = {
 	[0xFC] = { "ILLEGAL_FC 1,4", NULL, 1, { 4, 4 }, 0xFC },
 	[0xFD] = { "ILLEGAL_FD 1,4", NULL, 1, { 4, 4 }, 0xFD },
 	[0xFE] = { "CP A,n8 2,8 Z1HC", op_cp_A_n8, 2, { 8, 8 }, 0xFE },
-	[0xFF] = { "RST $38 1,16", NULL, 1, { 16, 16 }, 0xFF },
+	[0xFF] = { "RST $38 1,16", op_rst_$38, 1, { 16, 16 }, 0xFF },
 };
 
 void initreg(struct CPU *cpu)
