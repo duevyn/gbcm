@@ -8,15 +8,22 @@
 #define DOTS_PER_FRAME 70224.0f
 #define NS_PER_FRAME (1000000000 * DOTS_PER_FRAME / CLOCK)
 
+#define OAM_DOTS 80
+#define DRAW_DOTS_MIN 172
+#define SCANLINE_DOTS 456
+#define LY_VBLNK_FST 144
+#define LY_VBLNK_LST 153
+
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 
 typedef struct PPU {
-	int dots;
+	int dots, frm_dots, ly_dots;
+	uint8_t ly, lyc, scy, scx, wy, wx, dma, m3delay;
 	enum {
 		HBLNK,
 		VBLNK,
-		SCAN,
+		OAM,
 		DRAW,
 	} mode;
 } PPU;
@@ -24,7 +31,7 @@ typedef struct PPU {
 const char *const ModeNames[] = {
 	"H Blank",
 	"V Blank",
-	"SCAN",
+	"OAM",
 	"DRAW",
 };
 
@@ -59,39 +66,89 @@ void hndlevnt(int *running)
 	}
 }
 
+void update_stat()
+{
+	fprintf(stderr, "---- ALERT PPU MODE CHANGE ");
+}
+
+void request_interrupt()
+{
+	fprintf(stderr, "----  ALERT: REQUEST INTERUPPT ");
+}
+
+void check_lyc_eq_ly()
+{
+	if (ppu.ly == ppu.lyc)
+		fprintf(stderr, "---- ALERT: LY == LYC ");
+}
+
+void render_scanline()
+{
+}
+
 void ppu_step(int dots)
 {
-	// Advance PPU dots by 'clocks'
-	// Update modes, render pixels to gb_framebuffer if in drawing mode
-	// If LY == 144 and entering VBlank, set ppu.frame_ready = 1, trigger interrupt
-	// If LY == 154, reset to 0 for next frame
-	//fprintf(stderr, "::: dots %02d md %d\n", ppu.dots, ppu.mode);
-	ppu.dots += dots;
-	if (ppu.dots >= 154 || ppu.dots <= 80) {
-		ppu.mode = SCAN;
-		ppu.dots = ppu.dots >= 154 ? 0 : ppu.dots;
-		fprintf(stderr, ":: (%s: %d)\n", ModeNames[ppu.mode], ppu.dots);
-		return;
-	}
-	if (ppu.dots >= 144 && ppu.dots < 154) {
-		// last for 4560 dots (10 scanlines)
-		// gameboy triggers vblank interrupt here
-		ppu.mode = VBLNK;
-		fprintf(stderr, ":: (%s: %d)\n", ModeNames[ppu.mode], ppu.dots);
-		return;
-	}
-	fprintf(stderr, ":: (%s: %d)\n", ModeNames[ppu.mode], ppu.dots);
+	ppu.frm_dots += dots;
+	ppu.ly_dots += dots;
+	const char *prv_mode = ModeNames[ppu.mode];
+	switch (ppu.mode) {
+	case (OAM): //mode 2
+		if (ppu.ly_dots >= OAM_DOTS) {
+			ppu.mode = DRAW;
+			ppu.m3delay = 0; //TODO: calc m3 delay
+			update_stat();
+		}
 
-	// figure out mode 3 (draw) length: 172-289 dots
-	// mode 3: During Mode 3, by default the PPU outputs one pixel to the screen per dot, from left to right; the screen is 160 pixels wide, so the minimum Mode 3 length is 160 + 12(1) = 172 dots.
-	// (1) The 12 extra dots of penalty come from two tile fetches at the beginning of Mode 3. One is the first tile in the scanline (the one that gets shifted by SCX % 8 pixels), the other is simply discarded
-	//
+		break;
+	case (DRAW): //mode 3
 
-	// mode 0 (hblank) length is 376 - len mode 3
-	// starts when line of pixels is completely drawn. Opportunity to do some work before next line. One for every line.
-	// enables raster effects
-	// update LY to reflect next line
-	// The Game Boy constantly compares the value of the LYC and LY registers. When both values are identical, the “LYC=LY” flag in the STAT register is set, and (if enabled) a STAT interrupt is requested.
+		// mode 3: During Mode 3, by default the PPU outputs one pixel to the screen per dot, from left to right; the screen is 160 pixels wide, so the minimum Mode 3 length is 160 + 12(1) = 172 dots.
+		// (1) The 12 extra dots of penalty come from two tile fetches at the beginning of Mode 3. One is the first tile in the scanline (the one that gets shifted by SCX % 8 pixels), the other is simply discarded
+
+		if (ppu.ly_dots >= OAM_DOTS + DRAW_DOTS_MIN + ppu.m3delay) {
+			ppu.mode = HBLNK;
+			update_stat();
+		}
+		break;
+	case (HBLNK): // mode 0
+
+		// mode 0 (hblank) length is 376 - len mode 3
+		// starts when line of pixels is completely drawn. Opportunity to do some work before next line. One for every line.
+		// enables raster effects
+
+		if (ppu.ly_dots >= SCANLINE_DOTS) {
+			ppu.ly_dots -= SCANLINE_DOTS;
+			ppu.ly++;
+			check_lyc_eq_ly();
+
+			if (ppu.ly < LY_VBLNK_FST) {
+				ppu.mode = OAM;
+				update_stat();
+			} else {
+				ppu.mode = VBLNK;
+				request_interrupt();
+			}
+		}
+		break;
+	case (VBLNK): // mode 1
+		if (ppu.ly_dots >= SCANLINE_DOTS) {
+			ppu.ly_dots -= SCANLINE_DOTS;
+			ppu.ly++;
+
+			if (ppu.ly > LY_VBLNK_LST) {
+				ppu.mode = OAM;
+				ppu.ly = 0;
+			}
+
+			check_lyc_eq_ly();
+			update_stat();
+		}
+		break;
+	}
+
+	fprintf(stderr, "--- %s (ly=%d: ly_dots=%d, frm_dots=%d)\n",
+		ModeNames[ppu.mode], ppu.ly, ppu.ly_dots, ppu.frm_dots);
+
 	return;
 }
 
@@ -99,14 +156,16 @@ void hndl_interrupts()
 {
 }
 
-void emulate()
+void emulateframe()
 {
-	int ticks = 0;
+	int ticks = 0, tot_ticks = 0;
 
 	do {
 		ticks = cpu_step(&cpu);
 		ppu_step(ticks);
-	} while (ppu.mode != VBLNK);
+		hndl_interrupts();
+		tot_ticks += ticks;
+	} while (tot_ticks < DOTS_PER_FRAME);
 }
 
 /* This function runs once per frame, and is the heart of the program. */
@@ -133,24 +192,24 @@ void render()
 	SDL_RenderDebugText(renderer, x, y, message);
 
 	SDL_RenderPresent(renderer);
-	ppu.dots = 0;
-	ppu.mode = SCAN;
 }
 
 int main(int argc, char *argv[])
 {
 	cpu_ldrom(&cpu, argv[1]);
 	init_sdl();
-	ppu.mode = SCAN;
+	ppu.mode = OAM;
+	ppu.ly = ppu.frm_dots = 0;
 	int running = 1;
 	while (running) {
 		uint64_t frame_start = SDL_GetTicksNS();
 		hndlevnt(&running);
-		emulate();
-		hndl_interrupts();
+		emulateframe();
 		render();
 
 		uint64_t delta_t = SDL_GetTicksNS() - frame_start;
+		fprintf(stderr, "\ntime working: %06f ms",
+			(SDL_GetTicksNS() - frame_start) / 1000000.0f);
 
 		if (delta_t < NS_PER_FRAME - 1000000)
 			SDL_DelayNS(NS_PER_FRAME - 1000000 - delta_t);
@@ -159,7 +218,7 @@ int main(int argc, char *argv[])
 		}
 		fprintf(stderr, "\n%06f ms (ppu %d)\n",
 			(SDL_GetTicksNS() - frame_start) / 1000000.0f,
-			ppu.dots);
+			ppu.frm_dots);
 	}
 
 	SDL_DestroyRenderer(renderer);

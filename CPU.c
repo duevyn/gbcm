@@ -525,6 +525,19 @@ uint8_t op_ret(struct CPU *cpu) //0xc9
 	return cpu->instr->dots[0];
 }
 
+uint8_t op_jp_Z_a16(struct CPU *cpu) //0xca
+{
+	int16_t a16 = ld_le16(cpu->rom + cpu->pc);
+	cpu->pc += 2;
+	fprintf(stderr, "0b%01b", cpu->fZ);
+	if (!cpu->fZ) {
+		return cpu->instr->dots[1];
+	}
+
+	cpu->pc = a16;
+	return cpu->instr->dots[0];
+}
+
 uint8_t op_call_a16(struct CPU *cpu) //0xcd
 {
 	int16_t a16 = ld_le16(cpu->rom + cpu->pc);
@@ -557,10 +570,13 @@ uint8_t op_rst_$18(struct CPU *cpu) //0xdf
 	return cpu->instr->dots[0];
 }
 
-uint8_t op_ld_$a8_A(struct CPU *cpu) //0xe0
+uint8_t op_ldh_$a8_A(struct CPU *cpu) //0xe0
 {
+	// TODO: invalid implementation. need bus
+	fprintf(stderr, "ERROR: op_ldh_$a8_A imlemented without bus\n");
+	exit(1);
 	int8_t a8 = cpu->rom[cpu->pc++];
-	cpu->rom[a8] = cpu->a;
+	cpu->rom[0xff00 + a8] = cpu->a;
 	return cpu->instr->dots[0];
 }
 
@@ -574,6 +590,12 @@ uint8_t op_ld_$C_A(struct CPU *cpu) //0xe2
 uint8_t op_rst_$20(struct CPU *cpu) //0xe7
 {
 	call(cpu, 0x20);
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_jp_HL(struct CPU *cpu) //0xe9
+{
+	cpu->pc = cpu->hl;
 	return cpu->instr->dots[0];
 }
 
@@ -591,9 +613,26 @@ uint8_t op_rst_$28(struct CPU *cpu) //0xef
 	return cpu->instr->dots[0];
 }
 
+uint8_t op_ldh_A_$a8(struct CPU *cpu) //0xf0
+{
+	// TODO: invalid implementation. need bus
+	fprintf(stderr, "ERROR: op_ldh_A_$a8 imlemented without bus\n");
+	exit(1);
+	int8_t a8 = cpu->rom[cpu->pc++];
+	cpu->a = cpu->rom[0xff00 + a8];
+	return cpu->instr->dots[0];
+}
+
 uint8_t op_di(struct CPU *cpu) //0xf3
 {
 	cpu->ime = false;
+	return cpu->instr->dots[0];
+}
+
+uint8_t op_push_AF(struct CPU *cpu) //0xf5
+{
+	cpu->sp -= 2;
+	wr_le16(&cpu->rom[cpu->sp], cpu->af);
 	return cpu->instr->dots[0];
 }
 
@@ -1254,7 +1293,7 @@ struct instr optbl[256] = {
 	[0xC7] = { "RST $00 1,16", op_rst_$00, 1, { 16, 16 }, 0xC7 },
 	[0xC8] = { "RET Z 1,20/8", op_ret_Z, 1, { 20, 8 }, 0xC8 },
 	[0xC9] = { "RET 1,16", op_ret, 1, { 16, 16 }, 0xC9 },
-	[0xCA] = { "JP Z,a16 3,16/12", NULL, 3, { 16, 12 }, 0xCA },
+	[0xCA] = { "JP Z,a16 3,16/12", op_jp_Z_a16, 3, { 16, 12 }, 0xCA },
 	[0xCB] = { "PREFIX 1,4", NULL, 1, { 4, 4 }, 0xCB },
 	[0xCC] = { "CALL Z,a16 3,24/12", NULL, 3, { 24, 12 }, 0xCC },
 	[0xCD] = { "CALL a16 3,24", op_call_a16, 3, { 24, 24 }, 0xCD },
@@ -1276,7 +1315,7 @@ struct instr optbl[256] = {
 	[0xDD] = { "ILLEGAL_DD 1,4", NULL, 1, { 4, 4 }, 0xDD },
 	[0xDE] = { "SBC A,n8 2,8 Z1HC", NULL, 2, { 8, 8 }, 0xDE },
 	[0xDF] = { "RST $18 1,16", op_rst_$18, 1, { 16, 16 }, 0xDF },
-	[0xE0] = { "LDH [a8],A 2,12", op_ld_$a8_A, 2, { 12, 12 }, 0xE0 },
+	[0xE0] = { "LDH [a8],A 2,12", op_ldh_$a8_A, 2, { 12, 12 }, 0xE0 },
 	[0xE1] = { "POP HL 1,12", NULL, 1, { 12, 12 }, 0xE1 },
 	[0xE2] = { "LDH [C],A 1,8", NULL, 1, { 8, 8 }, 0xE2 },
 	[0xE3] = { "ILLEGAL_E3 1,4", NULL, 1, { 4, 4 }, 0xE3 },
@@ -1285,19 +1324,19 @@ struct instr optbl[256] = {
 	[0xE6] = { "AND A,n8 2,8 Z010", NULL, 2, { 8, 8 }, 0xE6 },
 	[0xE7] = { "RST $20 1,16", op_rst_$20, 1, { 16, 16 }, 0xE7 },
 	[0xE8] = { "ADD SP,e8 2,16 00HC", NULL, 2, { 16, 16 }, 0xE8 },
-	[0xE9] = { "JP HL 1,4", NULL, 1, { 4, 4 }, 0xE9 },
+	[0xE9] = { "JP HL 1,4", op_jp_HL, 1, { 4, 4 }, 0xE9 },
 	[0xEA] = { "LD [a16],A 3,16", op_ld_$a16_A, 3, { 16, 16 }, 0xEA },
 	[0xEB] = { "ILLEGAL_EB 1,4", NULL, 1, { 4, 4 }, 0xEB },
 	[0xEC] = { "ILLEGAL_EC 1,4", NULL, 1, { 4, 4 }, 0xEC },
 	[0xED] = { "ILLEGAL_ED 1,4", NULL, 1, { 4, 4 }, 0xED },
 	[0xEE] = { "XOR A,n8 2,8 Z000", NULL, 2, { 8, 8 }, 0xEE },
 	[0xEF] = { "RST $28 1,16", op_rst_$28, 1, { 16, 16 }, 0xEF },
-	[0xF0] = { "LDH A,[a8] 2,12", NULL, 2, { 12, 12 }, 0xF0 },
+	[0xF0] = { "LDH A,[a8] 2,12", op_ldh_A_$a8, 2, { 12, 12 }, 0xF0 },
 	[0xF1] = { "POP AF 1,12 ZNHC", NULL, 1, { 12, 12 }, 0xF1 },
 	[0xF2] = { "LDH A,[C] 1,8", NULL, 1, { 8, 8 }, 0xF2 },
 	[0xF3] = { "DI 1,4", op_di, 1, { 4, 4 }, 0xF3 },
 	[0xF4] = { "ILLEGAL_F4 1,4", NULL, 1, { 4, 4 }, 0xF4 },
-	[0xF5] = { "PUSH AF 1,16", NULL, 1, { 16, 16 }, 0xF5 },
+	[0xF5] = { "PUSH AF 1,16", op_push_AF, 1, { 16, 16 }, 0xF5 },
 	[0xF6] = { "OR A,n8 2,8 Z000", NULL, 2, { 8, 8 }, 0xF6 },
 	[0xF7] = { "RST $30 1,16", op_rst_$30, 1, { 16, 16 }, 0xF7 },
 	[0xF8] = { "LD HL,SP,e8 2,12 00HC", NULL, 2, { 12, 12 }, 0xF8 },
@@ -1399,7 +1438,7 @@ void cpu_ldrom(struct CPU *cpu, char *rom)
 	}
 	cpu->rom = malloc(sz);
 	ssize_t n = read(fd, cpu->rom, sz);
-	if (n < sz) {
+	if (n > sz) {
 		perror("Did not read 2097152 bytes\n");
 		exit(EXIT_FAILURE);
 	}
@@ -1436,7 +1475,7 @@ void cpu_ldrom(struct CPU *cpu, char *rom)
 void printInstr(struct CPU *cpu)
 {
 	if (cpu->prefix) {
-		fprintf(stderr, "0x%04x: cb %02x -- %s ", cpu->pc - 2,
+		fprintf(stderr, "0x%04x* cb %02x -- %s ", cpu->pc - 2,
 			cpu->instr->op, cpu->instr->mnem);
 		return;
 	}
@@ -1446,10 +1485,6 @@ void printInstr(struct CPU *cpu)
 
 int cpu_exec(struct CPU *cpu)
 {
-	if (cpu->prefix) {
-		fprintf(stderr, "\n========================================\n");
-	}
-
 	printInstr(cpu);
 	if (!cpu->instr->exec) {
 		fprintf(stderr, " !!! ERROR: NOT IMPLEMENTED\n\n");
