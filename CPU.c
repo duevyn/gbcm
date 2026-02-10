@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include "CPU.h"
-#include "registers.h"
+#include "GameBoy.h"
+#include "bus.h"
 
 // portable 16 bit operations for BE/LE compatability
 static inline uint16_t ld_le16(const uint8_t *src)
@@ -17,397 +17,397 @@ static inline void wr_le16(uint8_t *dest, uint16_t val)
 	dest[1] = (val >> 8) & 0xff;
 }
 
-static inline void call(struct CPU *cpu, uint16_t dest)
+static inline void call(struct GameBoy *gb, uint16_t dest)
 {
-	cpu->sp -= 2;
-	wr_le16(cpu->rom + cpu->sp, cpu->pc);
+	gb->cpu.sp -= 2;
+	wr_le16(gb->cpu.rom + gb->cpu.sp, gb->cpu.pc);
 
-	fprintf(stderr, "pc=0x%04x a16=0x%04x [sp] 0x%04x (0x%04x)", cpu->pc,
-		dest, *(uint16_t *)(cpu->rom + cpu->sp),
-		*(uint16_t *)(&cpu->rom[cpu->sp]));
+	fprintf(stderr, "pc=0x%04x a16=0x%04x [sp] 0x%04x (0x%04x)", gb->cpu.pc,
+		dest, *(uint16_t *)(gb->cpu.rom + gb->cpu.sp),
+		*(uint16_t *)(&gb->cpu.rom[gb->cpu.sp]));
 
-	cpu->pc = dest;
+	gb->cpu.pc = dest;
 }
 
-uint8_t op_noop(struct CPU *cpu) //0x00
+uint8_t op_noop(struct GameBoy *gb) //0x00
 {
-	return cpu->instr->dots[0];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_stop(struct CPU *cpu) //0x10
+uint8_t op_stop(struct GameBoy *gb) //0x10
 {
 	// TODO: very tricky behavior:
 	// https://gbdev.io/pandocs/Reducing_Power_Consumption.html#using-the-stop-instruction
 
-	cpu->pc++;
-	cpu->dblspd = !cpu->dblspd;
-	return cpu->instr->dots[0];
+	gb->cpu.pc++;
+	gb->cpu.dblspd = !gb->cpu.dblspd;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_B_n8(struct CPU *cpu) //0x06
+uint8_t op_ld_B_n8(struct GameBoy *gb) //0x06
 {
-	cpu->b = cpu->rom[cpu->pc++];
-	return cpu->instr->dots[0];
+	gb->cpu.b = gb->cpu.rom[gb->cpu.pc++];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_jr_e8(struct CPU *cpu) //0x20
+uint8_t op_jr_e8(struct GameBoy *gb) //0x20
 {
-	int8_t e8 = cpu->rom[cpu->pc++];
-	cpu->pc += e8;
-	return cpu->instr->dots[0];
+	int8_t e8 = gb->cpu.rom[gb->cpu.pc++];
+	gb->cpu.pc += e8;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_jr_NZ_e8(struct CPU *cpu) //0x20
+uint8_t op_jr_NZ_e8(struct GameBoy *gb) //0x20
 {
-	int8_t e8 = cpu->rom[cpu->pc++];
-	if (cpu->fZ) {
-		fprintf(stderr, "NZ false %08b ", cpu->f);
-		return cpu->instr->dots[1];
+	int8_t e8 = gb->cpu.rom[gb->cpu.pc++];
+	if (gb->cpu.fZ) {
+		fprintf(stderr, "NZ false %08b ", gb->cpu.f);
+		return gb->cpu.instr->dots[1];
 	}
-	fprintf(stderr, "NZ TRUE %08b", cpu->f);
-	cpu->pc += e8;
-	return cpu->instr->dots[0];
+	fprintf(stderr, "NZ TRUE %08b", gb->cpu.f);
+	gb->cpu.pc += e8;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_HL_n16(struct CPU *cpu) //0x21
+uint8_t op_ld_HL_n16(struct GameBoy *gb) //0x21
 {
-	cpu->hl = ld_le16(cpu->rom + cpu->pc);
-	cpu->pc += 2;
-	return cpu->instr->dots[0];
+	gb->cpu.hl = ld_le16(gb->cpu.rom + gb->cpu.pc);
+	gb->cpu.pc += 2;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_sp_n16(struct CPU *cpu) //0x31
+uint8_t op_ld_sp_n16(struct GameBoy *gb) //0x31
 {
-	cpu->sp = ld_le16(cpu->rom + cpu->pc);
-	cpu->pc += 2;
-	return cpu->instr->dots[0];
+	gb->cpu.sp = ld_le16(gb->cpu.rom + gb->cpu.pc);
+	gb->cpu.pc += 2;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_A_n8(struct CPU *cpu) //0x3e
+uint8_t op_ld_A_n8(struct GameBoy *gb) //0x3e
 {
-	cpu->a = cpu->rom[cpu->pc++];
-	return cpu->instr->dots[0];
+	gb->cpu.a = gb->cpu.rom[gb->cpu.pc++];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_B_B(struct CPU *cpu) //0x40
+uint8_t op_ld_B_B(struct GameBoy *gb) //0x40
 {
-	return cpu->instr->dots[0];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_B_C(struct CPU *cpu) //0x41
+uint8_t op_ld_B_C(struct GameBoy *gb) //0x41
 {
-	cpu->b = cpu->c;
-	return cpu->instr->dots[0];
+	gb->cpu.b = gb->cpu.c;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_B_D(struct CPU *cpu) //0x42
+uint8_t op_ld_B_D(struct GameBoy *gb) //0x42
 {
-	cpu->b = cpu->d;
-	return cpu->instr->dots[0];
+	gb->cpu.b = gb->cpu.d;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_B_E(struct CPU *cpu) //0x43
+uint8_t op_ld_B_E(struct GameBoy *gb) //0x43
 {
-	cpu->b = cpu->e;
-	return cpu->instr->dots[0];
+	gb->cpu.b = gb->cpu.e;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_B_H(struct CPU *cpu) //0x44
+uint8_t op_ld_B_H(struct GameBoy *gb) //0x44
 {
-	cpu->b = cpu->h;
-	return cpu->instr->dots[0];
+	gb->cpu.b = gb->cpu.h;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_B_L(struct CPU *cpu) //0x45
+uint8_t op_ld_B_L(struct GameBoy *gb) //0x45
 {
-	cpu->b = cpu->l;
-	return cpu->instr->dots[0];
+	gb->cpu.b = gb->cpu.l;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_B_$HL(struct CPU *cpu) //0x46
+uint8_t op_ld_B_$HL(struct GameBoy *gb) //0x46
 {
-	cpu->b = cpu->rom[cpu->hl];
-	return cpu->instr->dots[0];
+	gb->cpu.b = gb->cpu.rom[gb->cpu.hl];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_B_A(struct CPU *cpu) //0x47
+uint8_t op_ld_B_A(struct GameBoy *gb) //0x47
 {
-	cpu->b = cpu->a;
-	return cpu->instr->dots[0];
+	gb->cpu.b = gb->cpu.a;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_C_B(struct CPU *cpu) //0x48
+uint8_t op_ld_C_B(struct GameBoy *gb) //0x48
 {
-	cpu->c = cpu->b;
-	return cpu->instr->dots[0];
+	gb->cpu.c = gb->cpu.b;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_C_C(struct CPU *cpu) //0x49
+uint8_t op_ld_C_C(struct GameBoy *gb) //0x49
 {
-	return cpu->instr->dots[0];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_C_D(struct CPU *cpu) //0x4a
+uint8_t op_ld_C_D(struct GameBoy *gb) //0x4a
 {
-	cpu->c = cpu->d;
-	return cpu->instr->dots[0];
+	gb->cpu.c = gb->cpu.d;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_C_E(struct CPU *cpu) //0x4b
+uint8_t op_ld_C_E(struct GameBoy *gb) //0x4b
 {
-	cpu->c = cpu->e;
-	return cpu->instr->dots[0];
+	gb->cpu.c = gb->cpu.e;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_C_H(struct CPU *cpu) //0x4c
+uint8_t op_ld_C_H(struct GameBoy *gb) //0x4c
 {
-	cpu->c = cpu->h;
-	return cpu->instr->dots[0];
+	gb->cpu.c = gb->cpu.h;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_C_L(struct CPU *cpu) //0x4d
+uint8_t op_ld_C_L(struct GameBoy *gb) //0x4d
 {
-	cpu->c = cpu->l;
-	return cpu->instr->dots[0];
+	gb->cpu.c = gb->cpu.l;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_C_$HL(struct CPU *cpu) //0x4e
+uint8_t op_ld_C_$HL(struct GameBoy *gb) //0x4e
 {
-	cpu->c = cpu->rom[cpu->hl];
-	return cpu->instr->dots[0];
+	gb->cpu.c = gb->cpu.rom[gb->cpu.hl];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_C_A(struct CPU *cpu) //0x4f
+uint8_t op_ld_C_A(struct GameBoy *gb) //0x4f
 {
-	cpu->c = cpu->a;
-	return cpu->instr->dots[0];
+	gb->cpu.c = gb->cpu.a;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_D_B(struct CPU *cpu) //0x50
+uint8_t op_ld_D_B(struct GameBoy *gb) //0x50
 {
-	cpu->d = cpu->b;
-	return cpu->instr->dots[0];
+	gb->cpu.d = gb->cpu.b;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_D_C(struct CPU *cpu) //0x51
+uint8_t op_ld_D_C(struct GameBoy *gb) //0x51
 {
-	cpu->d = cpu->c;
-	return cpu->instr->dots[0];
+	gb->cpu.d = gb->cpu.c;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_D_D(struct CPU *cpu) //0x52
+uint8_t op_ld_D_D(struct GameBoy *gb) //0x52
 {
-	return cpu->instr->dots[0];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_D_E(struct CPU *cpu) //0x53
+uint8_t op_ld_D_E(struct GameBoy *gb) //0x53
 {
-	cpu->d = cpu->e;
-	return cpu->instr->dots[0];
+	gb->cpu.d = gb->cpu.e;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_D_H(struct CPU *cpu) //0x54
+uint8_t op_ld_D_H(struct GameBoy *gb) //0x54
 {
-	cpu->d = cpu->h;
-	return cpu->instr->dots[0];
+	gb->cpu.d = gb->cpu.h;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_D_L(struct CPU *cpu) //0x55
+uint8_t op_ld_D_L(struct GameBoy *gb) //0x55
 {
-	cpu->d = cpu->l;
-	return cpu->instr->dots[0];
+	gb->cpu.d = gb->cpu.l;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_D_$HL(struct CPU *cpu) //0x56
+uint8_t op_ld_D_$HL(struct GameBoy *gb) //0x56
 {
-	cpu->d = cpu->rom[cpu->hl];
-	return cpu->instr->dots[0];
+	gb->cpu.d = gb->cpu.rom[gb->cpu.hl];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_D_A(struct CPU *cpu) //0x57
+uint8_t op_ld_D_A(struct GameBoy *gb) //0x57
 {
-	cpu->d = cpu->a;
-	return cpu->instr->dots[0];
+	gb->cpu.d = gb->cpu.a;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_E_B(struct CPU *cpu) //0x58
+uint8_t op_ld_E_B(struct GameBoy *gb) //0x58
 {
-	cpu->e = cpu->b;
-	return cpu->instr->dots[0];
+	gb->cpu.e = gb->cpu.b;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_E_C(struct CPU *cpu) //0x59
+uint8_t op_ld_E_C(struct GameBoy *gb) //0x59
 {
-	cpu->e = cpu->c;
-	return cpu->instr->dots[0];
+	gb->cpu.e = gb->cpu.c;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_E_D(struct CPU *cpu) //0x5a
+uint8_t op_ld_E_D(struct GameBoy *gb) //0x5a
 {
-	cpu->e = cpu->d;
-	return cpu->instr->dots[0];
+	gb->cpu.e = gb->cpu.d;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_E_E(struct CPU *cpu) //0x5b
+uint8_t op_ld_E_E(struct GameBoy *gb) //0x5b
 {
-	return cpu->instr->dots[0];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_E_H(struct CPU *cpu) //0x5c
+uint8_t op_ld_E_H(struct GameBoy *gb) //0x5c
 {
-	cpu->e = cpu->h;
-	return cpu->instr->dots[0];
+	gb->cpu.e = gb->cpu.h;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_E_L(struct CPU *cpu) //0x5d
+uint8_t op_ld_E_L(struct GameBoy *gb) //0x5d
 {
-	cpu->e = cpu->l;
-	return cpu->instr->dots[0];
+	gb->cpu.e = gb->cpu.l;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_E_$HL(struct CPU *cpu) //0x5e
+uint8_t op_ld_E_$HL(struct GameBoy *gb) //0x5e
 {
-	cpu->e = cpu->rom[cpu->hl];
-	return cpu->instr->dots[0];
+	gb->cpu.e = gb->cpu.rom[gb->cpu.hl];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_E_A(struct CPU *cpu) //0x5f
+uint8_t op_ld_E_A(struct GameBoy *gb) //0x5f
 {
-	cpu->e = cpu->a;
-	return cpu->instr->dots[0];
+	gb->cpu.e = gb->cpu.a;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_H_B(struct CPU *cpu) //0x60
+uint8_t op_ld_H_B(struct GameBoy *gb) //0x60
 {
-	cpu->h = cpu->b;
-	return cpu->instr->dots[0];
+	gb->cpu.h = gb->cpu.b;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_H_C(struct CPU *cpu) //0x61
+uint8_t op_ld_H_C(struct GameBoy *gb) //0x61
 {
-	cpu->h = cpu->c;
-	return cpu->instr->dots[0];
+	gb->cpu.h = gb->cpu.c;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_H_D(struct CPU *cpu) //0x62
+uint8_t op_ld_H_D(struct GameBoy *gb) //0x62
 {
-	cpu->h = cpu->d;
-	return cpu->instr->dots[0];
+	gb->cpu.h = gb->cpu.d;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_H_E(struct CPU *cpu) //0x63
+uint8_t op_ld_H_E(struct GameBoy *gb) //0x63
 {
-	cpu->h = cpu->e;
-	return cpu->instr->dots[0];
+	gb->cpu.h = gb->cpu.e;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_H_H(struct CPU *cpu) //0x64
+uint8_t op_ld_H_H(struct GameBoy *gb) //0x64
 {
-	return cpu->instr->dots[0];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_H_L(struct CPU *cpu) //0x65
+uint8_t op_ld_H_L(struct GameBoy *gb) //0x65
 {
-	cpu->h = cpu->l;
-	return cpu->instr->dots[0];
+	gb->cpu.h = gb->cpu.l;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_H_$HL(struct CPU *cpu) //0x66
+uint8_t op_ld_H_$HL(struct GameBoy *gb) //0x66
 {
-	cpu->h = cpu->rom[cpu->hl];
-	return cpu->instr->dots[0];
+	gb->cpu.h = gb->cpu.rom[gb->cpu.hl];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_H_A(struct CPU *cpu) //0x67
+uint8_t op_ld_H_A(struct GameBoy *gb) //0x67
 {
-	cpu->h = cpu->a;
-	return cpu->instr->dots[0];
+	gb->cpu.h = gb->cpu.a;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_L_B(struct CPU *cpu) //0x68
+uint8_t op_ld_L_B(struct GameBoy *gb) //0x68
 {
-	cpu->l = cpu->b;
-	return cpu->instr->dots[0];
+	gb->cpu.l = gb->cpu.b;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_L_C(struct CPU *cpu) //0x69
+uint8_t op_ld_L_C(struct GameBoy *gb) //0x69
 {
-	cpu->l = cpu->c;
-	return cpu->instr->dots[0];
+	gb->cpu.l = gb->cpu.c;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_L_D(struct CPU *cpu) //0x6a
+uint8_t op_ld_L_D(struct GameBoy *gb) //0x6a
 {
-	cpu->l = cpu->d;
-	return cpu->instr->dots[0];
+	gb->cpu.l = gb->cpu.d;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_L_E(struct CPU *cpu) //0x6b
+uint8_t op_ld_L_E(struct GameBoy *gb) //0x6b
 {
-	cpu->l = cpu->e;
-	return cpu->instr->dots[0];
+	gb->cpu.l = gb->cpu.e;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_L_H(struct CPU *cpu) //0x6c
+uint8_t op_ld_L_H(struct GameBoy *gb) //0x6c
 {
-	cpu->l = cpu->h;
-	return cpu->instr->dots[0];
+	gb->cpu.l = gb->cpu.h;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_L_L(struct CPU *cpu) //0x6d
+uint8_t op_ld_L_L(struct GameBoy *gb) //0x6d
 {
-	return cpu->instr->dots[0];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_L_$HL(struct CPU *cpu) //0x6e
+uint8_t op_ld_L_$HL(struct GameBoy *gb) //0x6e
 {
-	cpu->l = cpu->rom[cpu->hl];
-	return cpu->instr->dots[0];
+	gb->cpu.l = gb->cpu.rom[gb->cpu.hl];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_L_A(struct CPU *cpu) //0x6f
+uint8_t op_ld_L_A(struct GameBoy *gb) //0x6f
 {
-	cpu->l = cpu->a;
-	return cpu->instr->dots[0];
+	gb->cpu.l = gb->cpu.a;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_$HL_B(struct CPU *cpu) //0x70
+uint8_t op_ld_$HL_B(struct GameBoy *gb) //0x70
 {
-	cpu->rom[cpu->hl] = cpu->b;
-	return cpu->instr->dots[0];
+	gb->cpu.rom[gb->cpu.hl] = gb->cpu.b;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_$HL_C(struct CPU *cpu) //0x71
+uint8_t op_ld_$HL_C(struct GameBoy *gb) //0x71
 {
-	cpu->rom[cpu->hl] = cpu->c;
-	return cpu->instr->dots[0];
+	gb->cpu.rom[gb->cpu.hl] = gb->cpu.c;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_$HL_D(struct CPU *cpu) //0x72
+uint8_t op_ld_$HL_D(struct GameBoy *gb) //0x72
 {
-	cpu->rom[cpu->hl] = cpu->d;
-	return cpu->instr->dots[0];
+	gb->cpu.rom[gb->cpu.hl] = gb->cpu.d;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_$HL_E(struct CPU *cpu) //0x73
+uint8_t op_ld_$HL_E(struct GameBoy *gb) //0x73
 {
-	cpu->rom[cpu->hl] = cpu->e;
-	return cpu->instr->dots[0];
+	gb->cpu.rom[gb->cpu.hl] = gb->cpu.e;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_$HL_H(struct CPU *cpu) //0x74
+uint8_t op_ld_$HL_H(struct GameBoy *gb) //0x74
 {
-	cpu->rom[cpu->hl] = cpu->h;
-	return cpu->instr->dots[0];
+	gb->cpu.rom[gb->cpu.hl] = gb->cpu.h;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_$HL_L(struct CPU *cpu) //0x75
+uint8_t op_ld_$HL_L(struct GameBoy *gb) //0x75
 {
-	cpu->rom[cpu->hl] = cpu->l;
-	return cpu->instr->dots[0];
+	gb->cpu.rom[gb->cpu.hl] = gb->cpu.l;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_halt(struct CPU *cpu) //0x76
+uint8_t op_halt(struct GameBoy *gb) //0x76
 {
 	// TODO Enter CPU low-power consumption mode until an interrupt occurs.
 
@@ -417,256 +417,257 @@ uint8_t op_halt(struct CPU *cpu) //0x76
 	// if ime and no interrupts
 	// if no ime and interrupts
 
-	return cpu->instr->dots[0];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_$HL_A(struct CPU *cpu) //0x77
+uint8_t op_ld_$HL_A(struct GameBoy *gb) //0x77
 {
-	cpu->rom[cpu->hl] = cpu->a;
-	return cpu->instr->dots[0];
+	gb->cpu.rom[gb->cpu.hl] = gb->cpu.a;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_A_B(struct CPU *cpu) //0x78
+uint8_t op_ld_A_B(struct GameBoy *gb) //0x78
 {
-	cpu->a = cpu->b;
-	return cpu->instr->dots[0];
+	gb->cpu.a = gb->cpu.b;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_A_C(struct CPU *cpu) //0x79
+uint8_t op_ld_A_C(struct GameBoy *gb) //0x79
 {
-	cpu->a = cpu->c;
-	return cpu->instr->dots[0];
+	gb->cpu.a = gb->cpu.c;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_A_D(struct CPU *cpu) //0x7a
+uint8_t op_ld_A_D(struct GameBoy *gb) //0x7a
 {
-	cpu->a = cpu->d;
-	return cpu->instr->dots[0];
+	gb->cpu.a = gb->cpu.d;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_A_E(struct CPU *cpu) //0x7b
+uint8_t op_ld_A_E(struct GameBoy *gb) //0x7b
 {
-	cpu->a = cpu->e;
-	return cpu->instr->dots[0];
+	gb->cpu.a = gb->cpu.e;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_A_H(struct CPU *cpu) //0x7c
+uint8_t op_ld_A_H(struct GameBoy *gb) //0x7c
 {
-	cpu->a = cpu->h;
-	return cpu->instr->dots[0];
+	gb->cpu.a = gb->cpu.h;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_A_L(struct CPU *cpu) //0x7d
+uint8_t op_ld_A_L(struct GameBoy *gb) //0x7d
 {
-	cpu->a = cpu->l;
-	return cpu->instr->dots[0];
+	gb->cpu.a = gb->cpu.l;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_A_$HL(struct CPU *cpu) //0x7e
+uint8_t op_ld_A_$HL(struct GameBoy *gb) //0x7e
 {
-	cpu->a = cpu->rom[cpu->hl];
-	return cpu->instr->dots[0];
+	gb->cpu.a = gb->cpu.rom[gb->cpu.hl];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_A_A(struct CPU *cpu) //0x7f
+uint8_t op_ld_A_A(struct GameBoy *gb) //0x7f
 {
-	return cpu->instr->dots[0];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_xor_A_A(struct CPU *cpu) //0xaf
+uint8_t op_xor_A_A(struct GameBoy *gb) //0xaf
 {
-	cpu->a ^= cpu->a;
-	cpu->fZ = 1;
-	cpu->fN = 0;
-	cpu->fH = 0;
-	cpu->fC = 0;
-	return cpu->instr->dots[0];
+	gb->cpu.a ^= gb->cpu.a;
+	gb->cpu.fZ = 1;
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = 0;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_or_A_A(struct CPU *cpu) //0xb7
+uint8_t op_or_A_A(struct GameBoy *gb) //0xb7
 {
-	cpu->fZ = cpu->a == 0;
-	cpu->fN = 0;
-	cpu->fH = 0;
-	cpu->fC = 0;
-	return cpu->instr->dots[0];
+	gb->cpu.fZ = gb->cpu.a == 0;
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = 0;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ret_NZ(struct CPU *cpu) //0xc0
+uint8_t op_ret_NZ(struct GameBoy *gb) //0xc0
 {
-	fprintf(stderr, "fZ=%b ", cpu->fZ);
-	if (cpu->fZ) {
+	fprintf(stderr, "fZ=%b ", gb->cpu.fZ);
+	if (gb->cpu.fZ) {
 		fprintf(stderr, "fZ == 1 NZ=FALSE ");
-		return cpu->instr->dots[1];
+		return gb->cpu.instr->dots[1];
 	}
 	fprintf(stderr, "fZ == 0 NZ=TRUE ");
-	cpu->pc = ld_le16(cpu->rom + cpu->sp);
-	cpu->sp += 2;
-	return cpu->instr->dots[0];
+	gb->cpu.pc = ld_le16(gb->cpu.rom + gb->cpu.sp);
+	gb->cpu.sp += 2;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ret_Z(struct CPU *cpu) //0xc8
+uint8_t op_ret_Z(struct GameBoy *gb) //0xc8
 {
-	fprintf(stderr, "fZ=%b ", cpu->fZ);
-	if (!cpu->fZ) {
+	fprintf(stderr, "fZ=%b ", gb->cpu.fZ);
+	if (!gb->cpu.fZ) {
 		fprintf(stderr, "fZ == 0 FALSE ");
-		return cpu->instr->dots[1];
+		return gb->cpu.instr->dots[1];
 	}
 	fprintf(stderr, "fZ == 0 TRUE ");
-	cpu->pc = ld_le16(cpu->rom + cpu->sp);
-	cpu->sp += 2;
-	return cpu->instr->dots[0];
+	gb->cpu.pc = ld_le16(gb->cpu.rom + gb->cpu.sp);
+	gb->cpu.sp += 2;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ret(struct CPU *cpu) //0xc9
+uint8_t op_ret(struct GameBoy *gb) //0xc9
 {
-	cpu->pc = ld_le16(cpu->rom + cpu->sp);
-	cpu->sp += 2;
-	return cpu->instr->dots[0];
+	gb->cpu.pc = ld_le16(gb->cpu.rom + gb->cpu.sp);
+	gb->cpu.sp += 2;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_jp_Z_a16(struct CPU *cpu) //0xca
+uint8_t op_jp_Z_a16(struct GameBoy *gb) //0xca
 {
-	int16_t a16 = ld_le16(cpu->rom + cpu->pc);
-	cpu->pc += 2;
-	fprintf(stderr, "0b%01b", cpu->fZ);
-	if (!cpu->fZ) {
-		return cpu->instr->dots[1];
+	int16_t a16 = ld_le16(gb->cpu.rom + gb->cpu.pc);
+	gb->cpu.pc += 2;
+	fprintf(stderr, "0b%01b", gb->cpu.fZ);
+	if (!gb->cpu.fZ) {
+		return gb->cpu.instr->dots[1];
 	}
 
-	cpu->pc = a16;
-	return cpu->instr->dots[0];
+	gb->cpu.pc = a16;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_call_a16(struct CPU *cpu) //0xcd
+uint8_t op_call_a16(struct GameBoy *gb) //0xcd
 {
-	int16_t a16 = ld_le16(cpu->rom + cpu->pc);
-	cpu->pc += 2;
-	call(cpu, a16);
-	return cpu->instr->dots[0];
+	int16_t a16 = ld_le16(gb->cpu.rom + gb->cpu.pc);
+	gb->cpu.pc += 2;
+	call(gb, a16);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_rst_$00(struct CPU *cpu) //0xc7
+uint8_t op_rst_$00(struct GameBoy *gb) //0xc7
 {
-	call(cpu, 0x00);
-	return cpu->instr->dots[0];
+	call(gb, 0x00);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_rst_$08(struct CPU *cpu) //0xcf
+uint8_t op_rst_$08(struct GameBoy *gb) //0xcf
 {
-	call(cpu, 0x08);
-	return cpu->instr->dots[0];
+	call(gb, 0x08);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_rst_$10(struct CPU *cpu) //0xd7
+uint8_t op_rst_$10(struct GameBoy *gb) //0xd7
 {
-	call(cpu, 0x10);
-	return cpu->instr->dots[0];
+	call(gb, 0x10);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_rst_$18(struct CPU *cpu) //0xdf
+uint8_t op_rst_$18(struct GameBoy *gb) //0xdf
 {
-	call(cpu, 0x18);
-	return cpu->instr->dots[0];
+	call(gb, 0x18);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ldh_$a8_A(struct CPU *cpu) //0xe0
+uint8_t op_ldh_$a8_A(struct GameBoy *gb) //0xe0
 {
 	// TODO: invalid implementation. need bus
 	fprintf(stderr, "ERROR: op_ldh_$a8_A imlemented without bus\n");
 	exit(1);
-	int8_t a8 = cpu->rom[cpu->pc++];
-	cpu->rom[0xff00 + a8] = cpu->a;
-	return cpu->instr->dots[0];
+	int8_t a8 = gb->cpu.rom[gb->cpu.pc++];
+	gb->cpu.rom[0xff00 + a8] = gb->cpu.a;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_$C_A(struct CPU *cpu) //0xe2
+uint8_t op_ld_$C_A(struct GameBoy *gb) //0xe2
 {
-	int8_t $c = cpu->rom[cpu->pc++];
-	cpu->rom[0xff0 + $c] = cpu->a;
-	return cpu->instr->dots[0];
+	int8_t $c = gb->cpu.rom[gb->cpu.pc++];
+	gb->cpu.rom[0xff0 + $c] = gb->cpu.a;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_rst_$20(struct CPU *cpu) //0xe7
+uint8_t op_rst_$20(struct GameBoy *gb) //0xe7
 {
-	call(cpu, 0x20);
-	return cpu->instr->dots[0];
+	call(gb, 0x20);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_jp_HL(struct CPU *cpu) //0xe9
+uint8_t op_jp_HL(struct GameBoy *gb) //0xe9
 {
-	cpu->pc = cpu->hl;
-	return cpu->instr->dots[0];
+	gb->cpu.pc = gb->cpu.hl;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_$a16_A(struct CPU *cpu) //0xea
+uint8_t op_ld_$a16_A(struct GameBoy *gb) //0xea
 {
-	int16_t a16 = ld_le16(cpu->rom + cpu->pc);
-	cpu->pc += 2;
-	cpu->rom[a16] = cpu->a;
-	return cpu->instr->dots[0];
+	int16_t a16 = ld_le16(gb->cpu.rom + gb->cpu.pc);
+	gb->cpu.pc += 2;
+	gb->cpu.rom[a16] = gb->cpu.a;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_rst_$28(struct CPU *cpu) //0xef
+uint8_t op_rst_$28(struct GameBoy *gb) //0xef
 {
-	call(cpu, 0x28);
-	return cpu->instr->dots[0];
+	call(gb, 0x28);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ldh_A_$a8(struct CPU *cpu) //0xf0
+uint8_t op_ldh_A_$a8(struct GameBoy *gb) //0xf0
 {
 	// TODO: invalid implementation. need bus
 	fprintf(stderr, "ERROR: op_ldh_A_$a8 imlemented without bus\n");
 	exit(1);
-	int8_t a8 = cpu->rom[cpu->pc++];
-	cpu->a = cpu->rom[0xff00 + a8];
-	return cpu->instr->dots[0];
+	int8_t a8 = gb->cpu.rom[gb->cpu.pc++];
+	gb->cpu.a = gb->cpu.rom[0xff00 + a8];
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_di(struct CPU *cpu) //0xf3
+uint8_t op_di(struct GameBoy *gb) //0xf3
 {
-	cpu->ime = false;
-	return cpu->instr->dots[0];
+	gb->cpu.ime = false;
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_push_AF(struct CPU *cpu) //0xf5
+uint8_t op_push_AF(struct GameBoy *gb) //0xf5
 {
-	cpu->sp -= 2;
-	wr_le16(&cpu->rom[cpu->sp], cpu->af);
-	return cpu->instr->dots[0];
+	gb->cpu.sp -= 2;
+	wr_le16(&gb->cpu.rom[gb->cpu.sp], gb->cpu.af);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_rst_$30(struct CPU *cpu) //0xf7
+uint8_t op_rst_$30(struct GameBoy *gb) //0xf7
 {
-	call(cpu, 0x30);
-	return cpu->instr->dots[0];
+	call(gb, 0x30);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_A_$a16(struct CPU *cpu) //0xfa
+uint8_t op_ld_A_$a16(struct GameBoy *gb) //0xfa
 {
-	int16_t a16 = ld_le16(cpu->rom + cpu->pc);
-	cpu->pc += 2;
-	fprintf(stderr, "-> a 0x%02x ", cpu->a);
-	cpu->a = cpu->rom[a16];
-	fprintf(stderr, "-> 0x%02x ", cpu->a);
-	return cpu->instr->dots[0];
+	int16_t a16 = ld_le16(gb->cpu.rom + gb->cpu.pc);
+	gb->cpu.pc += 2;
+	fprintf(stderr, "-> a 0x%02x ", gb->cpu.a);
+	gb->cpu.a = gb->cpu.rom[a16];
+	fprintf(stderr, "-> 0x%02x ", gb->cpu.a);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_cp_A_n8(struct CPU *cpu) //0xfe
+uint8_t op_cp_A_n8(struct GameBoy *gb) //0xfe
 {
-	uint8_t n8 = cpu->rom[cpu->pc++];
-	cpu->fZ = cpu->a == n8;
-	cpu->fN = 1;
-	cpu->fH = (cpu->a & 0x0f) < (n8 & 0x0f); //lsb a lt lsb n8
-	cpu->fC = cpu->a < n8;
-	fprintf(stderr, "-> a=0x%02x n8=0x%02x F=0b%08b ", cpu->a, n8, cpu->f);
-	return cpu->instr->dots[0];
+	uint8_t n8 = gb->cpu.rom[gb->cpu.pc++];
+	gb->cpu.fZ = gb->cpu.a == n8;
+	gb->cpu.fN = 1;
+	gb->cpu.fH = (gb->cpu.a & 0x0f) < (n8 & 0x0f); //lsb a lt lsb n8
+	gb->cpu.fC = gb->cpu.a < n8;
+	fprintf(stderr, "-> a=0x%02x n8=0x%02x F=0b%08b ", gb->cpu.a, n8,
+		gb->cpu.f);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_rst_$38(struct CPU *cpu) //0xff
+uint8_t op_rst_$38(struct GameBoy *gb) //0xff
 {
-	call(cpu, 0x38);
-	return cpu->instr->dots[0];
+	call(gb, 0x38);
+	return gb->cpu.instr->dots[0];
 }
 
 // Start cb
@@ -681,110 +682,110 @@ static inline void set_u3_$HL(uint8_t *dest, uint8_t n)
 	fprintf(stderr, "0b%08b ", *dest);
 }
 
-static inline void bit_u3_$HL(struct CPU *cpu, uint8_t n)
+static inline void bit_u3_$HL(struct GameBoy *gb, uint8_t n)
 {
-	fprintf(stderr, "f 0x%02x ", cpu->f);
-	uint8_t $hl = cpu->rom[cpu->hl];
-	cpu->fZ = !($hl & (1 << n));
-	cpu->fN = 0;
-	cpu->fH = 1;
-	fprintf(stderr, "[HL] 0b%08b f 0x%02x", $hl, cpu->f);
+	fprintf(stderr, "f 0x%02x ", gb->cpu.f);
+	uint8_t $hl = gb->cpu.rom[gb->cpu.hl];
+	gb->cpu.fZ = !($hl & (1 << n));
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 1;
+	fprintf(stderr, "[HL] 0b%08b f 0x%02x", $hl, gb->cpu.f);
 }
 
-uint8_t cb_bit_0_$HL(struct CPU *cpu) //0x46
+uint8_t cb_bit_0_$HL(struct GameBoy *gb) //0x46
 {
-	bit_u3_$HL(cpu, 0);
-	return cpu->instr->dots[0];
+	bit_u3_$HL(gb, 0);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_bit_1_$HL(struct CPU *cpu) //0x4e
+uint8_t cb_bit_1_$HL(struct GameBoy *gb) //0x4e
 {
-	bit_u3_$HL(cpu, 1);
-	return cpu->instr->dots[0];
+	bit_u3_$HL(gb, 1);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_bit_2_$HL(struct CPU *cpu) //0x56
+uint8_t cb_bit_2_$HL(struct GameBoy *gb) //0x56
 {
-	bit_u3_$HL(cpu, 2);
-	return cpu->instr->dots[0];
+	bit_u3_$HL(gb, 2);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_bit_3_$HL(struct CPU *cpu) //0x5e
+uint8_t cb_bit_3_$HL(struct GameBoy *gb) //0x5e
 {
-	bit_u3_$HL(cpu, 3);
-	return cpu->instr->dots[0];
+	bit_u3_$HL(gb, 3);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_bit_4_$HL(struct CPU *cpu) //0x66
+uint8_t cb_bit_4_$HL(struct GameBoy *gb) //0x66
 {
-	bit_u3_$HL(cpu, 4);
-	return cpu->instr->dots[0];
+	bit_u3_$HL(gb, 4);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_bit_5_$HL(struct CPU *cpu) //0x6e
+uint8_t cb_bit_5_$HL(struct GameBoy *gb) //0x6e
 {
-	bit_u3_$HL(cpu, 5);
-	return cpu->instr->dots[0];
+	bit_u3_$HL(gb, 5);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_bit_6_$HL(struct CPU *cpu) //0x76
+uint8_t cb_bit_6_$HL(struct GameBoy *gb) //0x76
 {
-	bit_u3_$HL(cpu, 6);
-	return cpu->instr->dots[0];
+	bit_u3_$HL(gb, 6);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_bit_7_$HL(struct CPU *cpu) //0x7e
+uint8_t cb_bit_7_$HL(struct GameBoy *gb) //0x7e
 {
-	bit_u3_$HL(cpu, 7);
-	return cpu->instr->dots[0];
+	bit_u3_$HL(gb, 7);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_set_0_$HL(struct CPU *cpu) //0xc6
+uint8_t cb_set_0_$HL(struct GameBoy *gb) //0xc6
 {
-	set_u3_$HL(&cpu->rom[cpu->hl], 0);
-	return cpu->instr->dots[0];
+	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 0);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_set_1_$HL(struct CPU *cpu) //0xce
+uint8_t cb_set_1_$HL(struct GameBoy *gb) //0xce
 {
-	set_u3_$HL(&cpu->rom[cpu->hl], 1);
-	return cpu->instr->dots[0];
+	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 1);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_set_2_$HL(struct CPU *cpu) //0xd6
+uint8_t cb_set_2_$HL(struct GameBoy *gb) //0xd6
 {
-	set_u3_$HL(&cpu->rom[cpu->hl], 2);
-	return cpu->instr->dots[0];
+	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 2);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_set_3_$HL(struct CPU *cpu) //0xde
+uint8_t cb_set_3_$HL(struct GameBoy *gb) //0xde
 {
-	set_u3_$HL(&cpu->rom[cpu->hl], 3);
-	return cpu->instr->dots[0];
+	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 3);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_set_4_$HL(struct CPU *cpu) //0xe6
+uint8_t cb_set_4_$HL(struct GameBoy *gb) //0xe6
 {
-	set_u3_$HL(&cpu->rom[cpu->hl], 4);
-	return cpu->instr->dots[0];
+	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 4);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_set_5_$HL(struct CPU *cpu) //0xee
+uint8_t cb_set_5_$HL(struct GameBoy *gb) //0xee
 {
-	set_u3_$HL(&cpu->rom[cpu->hl], 5);
-	return cpu->instr->dots[0];
+	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 5);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_set_6_$HL(struct CPU *cpu) //0xf6
+uint8_t cb_set_6_$HL(struct GameBoy *gb) //0xf6
 {
-	set_u3_$HL(&cpu->rom[cpu->hl], 6);
-	return cpu->instr->dots[0];
+	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 6);
+	return gb->cpu.instr->dots[0];
 }
 
-uint8_t cb_set_7_$HL(struct CPU *cpu) //0xfe
+uint8_t cb_set_7_$HL(struct GameBoy *gb) //0xfe
 {
-	set_u3_$HL(&cpu->rom[cpu->hl], 7);
-	return cpu->instr->dots[0];
+	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 7);
+	return gb->cpu.instr->dots[0];
 }
 
 struct instr cbtbl[256] = {
@@ -1349,127 +1350,19 @@ struct instr optbl[256] = {
 	[0xFF] = { "RST $38 1,16", op_rst_$38, 1, { 16, 16 }, 0xFF },
 };
 
-void initreg(struct CPU *cpu)
+void cpu_fetch(struct GameBoy *gb)
 {
-	cpu->rom[P1] = 0xcf;
-	cpu->rom[SB] = 0x00;
-	cpu->rom[SC] = 0x7e;
-	cpu->rom[DIV] = 0x18;
-
-	cpu->rom[TIMA] = 0;
-	cpu->rom[TMA] = 0;
-	cpu->rom[TAC] = 0xf8;
-	cpu->rom[IF] = 0xe1;
-
-	cpu->rom[NR10] = 0x80;
-	cpu->rom[NR11] = 0xbf;
-	cpu->rom[NR12] = 0xf3;
-	cpu->rom[NR13] = 0xff;
-	cpu->rom[NR14] = 0xbf;
-	cpu->rom[NR21] = 0x3f;
-	cpu->rom[NR22] = 0x00;
-	cpu->rom[NR23] = 0xff;
-	cpu->rom[NR24] = 0xbf;
-
-	cpu->rom[NR30] = 0x7f;
-	cpu->rom[NR31] = 0xff;
-	cpu->rom[NR32] = 0x9f;
-	cpu->rom[NR33] = 0xff;
-	cpu->rom[NR34] = 0xbf;
-	cpu->rom[NR41] = 0xff;
-	cpu->rom[NR42] = 0x00;
-	cpu->rom[NR43] = 0x00;
-	cpu->rom[NR44] = 0xbf;
-	cpu->rom[NR50] = 0x77;
-	cpu->rom[NR51] = 0xf3;
-	cpu->rom[NR52] = 0xf1;
-
-	cpu->rom[LCDC] = 0x91;
-	cpu->rom[STAT] = 0x81;
-	cpu->rom[SCY] = 0x00;
-	cpu->rom[SCX] = 0x00;
-	cpu->rom[LY] = 0x91;
-	cpu->rom[LYC] = 0x00;
-	cpu->rom[DMA] = 0xff;
-	cpu->rom[BGP] = 0xfc;
-	cpu->rom[WY] = 0x00;
-	cpu->rom[WX] = 0x00;
-	cpu->rom[IE] = 0x00;
-}
-
-void initreg_cgb(struct CPU *cpu)
-{
-	// overwrite dmg values
-	cpu->rom[SC] = 0x7f;
-	cpu->rom[DMA] = 0;
-
-	// exclusive cgb
-	cpu->rom[KEY1] = 0x7e;
-	cpu->rom[VBK] = 0xfe;
-	cpu->rom[HDMA1] = 0xff;
-	cpu->rom[HDMA2] = 0xff;
-	cpu->rom[HDMA3] = 0xff;
-	cpu->rom[HDMA4] = 0xff;
-	cpu->rom[HDMA5] = 0xff;
-	cpu->rom[RP] = 0x3e;
-	cpu->rom[SVBK] = 0xf8;
-}
-
-void cpu_fetch(struct CPU *cpu)
-{
-	cpu->op = cpu->rom[cpu->pc++];
-	if (cpu->op == 0xcb) {
-		cpu->op = cpu->rom[cpu->pc++];
-		cpu->instr = &cbtbl[cpu->op];
-		cpu->prefix = true;
+	//cpu->op = cpu->rom[cpu->pc++];
+	gb->cpu.op = bus_read(gb, gb->cpu.pc++);
+	if (gb->cpu.op == 0xcb) {
+		//gb->cpu.op = cpu->rom[cpu->pc++];
+		gb->cpu.op = bus_read(gb, gb->cpu.pc++);
+		gb->cpu.instr = &cbtbl[gb->cpu.op];
+		gb->cpu.prefix = true;
 		return;
 	}
 
-	cpu->instr = &optbl[cpu->op];
-}
-
-void cpu_ldrom(struct CPU *cpu, char *rom)
-{
-	size_t sz = 2097152;
-	int fd = open(rom, O_RDONLY);
-	if (fd < 0) {
-		perror("Could not open metal gear solid\n");
-		exit(EXIT_FAILURE);
-	}
-	cpu->rom = malloc(sz);
-	ssize_t n = read(fd, cpu->rom, sz);
-	if (n > sz) {
-		perror("Did not read 2097152 bytes\n");
-		exit(EXIT_FAILURE);
-	}
-
-	// initial values. figure out where i got these
-	// these are from gameboy cpu manual.
-	cpu->af = 0x11b0;
-	cpu->bc = 0x0013;
-	cpu->de = 0x00d8;
-	cpu->hl = 0x014d;
-	cpu->sp = 0xfffe;
-
-	// pan doc values. assume these are correct but verify against values above
-	// after investigating. values above are dmg defaults.
-	cpu->bc = 0x0013; //cgb dmgmode 0x0000
-	cpu->de = 0xff56; //cgb dmg mode 0x0008
-	cpu->hl = 0x000d; // cgb dmg ????
-
-	cpu->ime = cpu->dblspd = cpu->prefix = false;
-	cpu->pc = 0x150; // assume valid rom. (cpu->pc = 0x100)
-	cpu_fetch(cpu);
-
-	fprintf(stderr,
-		"af 0x%04x (addr 0x%p), a 0x%02x (addr 0x%p), f 0x%02x (addr 0x%p)\n",
-		cpu->af, &cpu->af, cpu->a, &cpu->a, cpu->f, &cpu->f);
-	fprintf(stderr,
-		"hl 0x%04x (addr 0x%p), h 0x%02x (addr 0x%p), l 0x%02x (addr 0x%p)\n",
-		cpu->hl, &cpu->hl, cpu->h, &cpu->h, cpu->l, &cpu->l);
-
-	initreg(cpu);
-	initreg_cgb(cpu);
+	gb->cpu.instr = &optbl[gb->cpu.op];
 }
 
 void printInstr(struct CPU *cpu)
@@ -1483,22 +1376,24 @@ void printInstr(struct CPU *cpu)
 		cpu->instr->mnem);
 }
 
-int cpu_exec(struct CPU *cpu)
+int cpu_exec(struct GameBoy *gb)
 {
-	printInstr(cpu);
-	if (!cpu->instr->exec) {
+	printInstr(&gb->cpu);
+	if (!gb->cpu.instr->exec) {
 		fprintf(stderr, " !!! ERROR: NOT IMPLEMENTED\n\n");
 		exit(1);
 	}
 
-	uint8_t result = cpu->instr->exec(cpu);
-	cpu->prefix = false;
+	uint8_t result = gb->cpu.instr->exec(gb);
+	gb->cpu.prefix = false;
 	return result;
 }
 
-int cpu_step(struct CPU *cpu)
+int cpu_step(struct GameBoy *gb)
 {
-	int result = cpu_exec(cpu);
-	cpu_fetch(cpu);
+	if (!gb->cpu.instr)
+		cpu_fetch(gb);
+	int result = cpu_exec(gb);
+	cpu_fetch(gb);
 	return result;
 }

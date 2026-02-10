@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+struct GameBoy;
 struct instr;
 typedef enum fl_rgf {
 	C = 0b00010000,
@@ -53,7 +54,7 @@ typedef struct CPU {
 		};
 	};
 	uint16_t pc, sp;
-	bool ime, dblspd, prefix;
+	bool ime, dblspd, prefix, halted;
 	struct ctdg *cg;
 	uint8_t *rom;
 
@@ -61,12 +62,12 @@ typedef struct CPU {
 
 typedef struct instr {
 	const char *mnem;
-	uint8_t (*exec)(struct CPU *cpu);
+	uint8_t (*exec)(struct GameBoy *gb);
 	uint8_t len;
 	uint8_t dots[2];
 	uint8_t op;
 } instr;
 
 void cpu_ldrom(struct CPU *cpu, char *rom);
-int cpu_step(struct CPU *cpu);
+int cpu_step(struct GameBoy *gb);
 #endif
