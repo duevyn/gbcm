@@ -52,6 +52,8 @@ void bus_write(struct GameBoy *gb, uint16_t addr, uint8_t data)
 {
 	if (addr < 0x8000) {
 		cart_write(&gb->crt, addr, data);
+		fprintf(stderr, "wr @rom 0x%04x 0x%02x ", addr, data);
+		return;
 	}
 
 	if (addr >= 0x8000 && addr < 0xA000) {
@@ -61,18 +63,22 @@ void bus_write(struct GameBoy *gb, uint16_t addr, uint8_t data)
 				gb->ppu.mode);
 			return;
 		}
-		fprintf(stderr, "-- VRAM 0x%04x 0x%02x ", addr, data);
+		fprintf(stderr, "wr @vram 0x%04x 0x%02x ", addr, data);
 		gb->ppu.vram[addr - 0x8000] = data;
 		return;
 	}
 
 	if (addr >= 0xA000 && addr <= 0xBFFF) {
 		//cart ram
+		fprintf(stderr, "wr @crt ram 0x%04x 0x%02x ", addr, data);
 		cart_write(&gb->crt, addr, data);
+		return;
 	}
 	if (addr >= 0xC000 && addr <= 0xDFFF) {
 		//wram
+		fprintf(stderr, "wr @wram 0x%04x 0x%02x ", addr, data);
 		gb->wram[addr - 0xC000] = data;
+		return;
 	}
 	if (addr >= 0xFE00 && addr <= 0xFE9F) {
 		//oam
@@ -82,21 +88,22 @@ void bus_write(struct GameBoy *gb, uint16_t addr, uint8_t data)
 				gb->ppu.mode);
 			return;
 		}
-		fprintf(stderr, "-- OAM 0x%04x 0x%02x ", addr, data);
+		fprintf(stderr, "wr @oam 0x%04x 0x%02x ", addr, data);
 		gb->ppu.oam[addr - 0xFE00] = data;
 		return;
 	}
 	if (addr >= 0xFF00 && addr <= 0xFF7F) {
 		//io
-		fprintf(stderr, "Reading IO 0xFF00-0xFF7F\n");
+		fprintf(stderr, "Writing IO 0xFF00-0xFF7F\n");
 		exit(EXIT_FAILURE);
 	}
 	if (addr >= 0xFF80 && addr <= 0xFFFE) {
 		//hram
-		fprintf(stderr, "-- HRAM 0x%04x 0x%02x ", addr, data);
+		fprintf(stderr, "wr @hram 0x%04x 0x%02x ", addr, data);
 		gb->hram[addr - 0xFF80] = data;
+		return;
 	}
 
-	fprintf(stderr, "Error writing to  %04x\n", addr);
+	fprintf(stderr, "-- Error writing to 0x%04x (bus.c)\n", addr);
 	exit(EXIT_FAILURE);
 }
