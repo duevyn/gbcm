@@ -19,12 +19,12 @@ static inline void wr_le16(uint8_t *dest, uint16_t val)
 
 static inline void call(struct GameBoy *gb, uint16_t dest)
 {
-	gb->cpu.sp -= 2;
-	wr_le16(gb->cpu.rom + gb->cpu.sp, gb->cpu.pc);
+	bus_write(gb, --gb->cpu.sp, gb->cpu.pc >> 8);
+	bus_write(gb, --gb->cpu.sp, gb->cpu.pc);
 
 	fprintf(stderr, "pc=0x%04x a16=0x%04x [sp] 0x%04x (0x%04x)", gb->cpu.pc,
-		dest, *(uint16_t *)(gb->cpu.rom + gb->cpu.sp),
-		*(uint16_t *)(&gb->cpu.rom[gb->cpu.sp]));
+		dest, *(uint16_t *)(gb->hram - gb->cpu.sp - 2),
+		*(uint16_t *)(&gb->hram[gb->cpu.sp - 0xFF80 - 2]));
 
 	gb->cpu.pc = dest;
 }
@@ -46,20 +46,20 @@ uint8_t op_stop(struct GameBoy *gb) //0x10
 
 uint8_t op_ld_B_n8(struct GameBoy *gb) //0x06
 {
-	gb->cpu.b = gb->cpu.rom[gb->cpu.pc++];
+	gb->cpu.b = bus_read(gb, gb->cpu.pc++);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_jr_e8(struct GameBoy *gb) //0x20
 {
-	int8_t e8 = gb->cpu.rom[gb->cpu.pc++];
+	int8_t e8 = bus_read(gb, gb->cpu.pc++);
 	gb->cpu.pc += e8;
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_jr_NZ_e8(struct GameBoy *gb) //0x20
 {
-	int8_t e8 = gb->cpu.rom[gb->cpu.pc++];
+	int8_t e8 = bus_read(gb, gb->cpu.pc++);
 	if (gb->cpu.fZ) {
 		fprintf(stderr, "NZ false %08b ", gb->cpu.f);
 		return gb->cpu.instr->dots[1];
@@ -71,21 +71,21 @@ uint8_t op_jr_NZ_e8(struct GameBoy *gb) //0x20
 
 uint8_t op_ld_HL_n16(struct GameBoy *gb) //0x21
 {
-	gb->cpu.hl = ld_le16(gb->cpu.rom + gb->cpu.pc);
-	gb->cpu.pc += 2;
+	gb->cpu.l = bus_read(gb, gb->cpu.pc++);
+	gb->cpu.h = bus_read(gb, gb->cpu.pc++);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_ld_sp_n16(struct GameBoy *gb) //0x31
 {
-	gb->cpu.sp = ld_le16(gb->cpu.rom + gb->cpu.pc);
-	gb->cpu.pc += 2;
+	gb->cpu.sp = 0 | bus_read(gb, gb->cpu.pc++);
+	gb->cpu.sp |= (bus_read(gb, gb->cpu.pc++) << 8);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_ld_A_n8(struct GameBoy *gb) //0x3e
 {
-	gb->cpu.a = gb->cpu.rom[gb->cpu.pc++];
+	gb->cpu.a = bus_read(gb, gb->cpu.pc++);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -126,7 +126,7 @@ uint8_t op_ld_B_L(struct GameBoy *gb) //0x45
 
 uint8_t op_ld_B_$HL(struct GameBoy *gb) //0x46
 {
-	gb->cpu.b = gb->cpu.rom[gb->cpu.hl];
+	gb->cpu.b = bus_read(gb, gb->cpu.hl);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -173,7 +173,7 @@ uint8_t op_ld_C_L(struct GameBoy *gb) //0x4d
 
 uint8_t op_ld_C_$HL(struct GameBoy *gb) //0x4e
 {
-	gb->cpu.c = gb->cpu.rom[gb->cpu.hl];
+	gb->cpu.c = bus_read(gb, gb->cpu.hl);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -220,7 +220,7 @@ uint8_t op_ld_D_L(struct GameBoy *gb) //0x55
 
 uint8_t op_ld_D_$HL(struct GameBoy *gb) //0x56
 {
-	gb->cpu.d = gb->cpu.rom[gb->cpu.hl];
+	gb->cpu.d = bus_read(gb, gb->cpu.hl);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -267,7 +267,7 @@ uint8_t op_ld_E_L(struct GameBoy *gb) //0x5d
 
 uint8_t op_ld_E_$HL(struct GameBoy *gb) //0x5e
 {
-	gb->cpu.e = gb->cpu.rom[gb->cpu.hl];
+	gb->cpu.e = bus_read(gb, gb->cpu.hl);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -314,7 +314,7 @@ uint8_t op_ld_H_L(struct GameBoy *gb) //0x65
 
 uint8_t op_ld_H_$HL(struct GameBoy *gb) //0x66
 {
-	gb->cpu.h = gb->cpu.rom[gb->cpu.hl];
+	gb->cpu.h = bus_read(gb, gb->cpu.hl);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -361,7 +361,7 @@ uint8_t op_ld_L_L(struct GameBoy *gb) //0x6d
 
 uint8_t op_ld_L_$HL(struct GameBoy *gb) //0x6e
 {
-	gb->cpu.l = gb->cpu.rom[gb->cpu.hl];
+	gb->cpu.l = bus_read(gb, gb->cpu.hl);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -373,37 +373,37 @@ uint8_t op_ld_L_A(struct GameBoy *gb) //0x6f
 
 uint8_t op_ld_$HL_B(struct GameBoy *gb) //0x70
 {
-	gb->cpu.rom[gb->cpu.hl] = gb->cpu.b;
+	bus_write(gb, gb->cpu.hl, gb->cpu.b);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_ld_$HL_C(struct GameBoy *gb) //0x71
 {
-	gb->cpu.rom[gb->cpu.hl] = gb->cpu.c;
+	bus_write(gb, gb->cpu.hl, gb->cpu.c);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_ld_$HL_D(struct GameBoy *gb) //0x72
 {
-	gb->cpu.rom[gb->cpu.hl] = gb->cpu.d;
+	bus_write(gb, gb->cpu.hl, gb->cpu.d);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_ld_$HL_E(struct GameBoy *gb) //0x73
 {
-	gb->cpu.rom[gb->cpu.hl] = gb->cpu.e;
+	bus_write(gb, gb->cpu.hl, gb->cpu.e);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_ld_$HL_H(struct GameBoy *gb) //0x74
 {
-	gb->cpu.rom[gb->cpu.hl] = gb->cpu.h;
+	bus_write(gb, gb->cpu.hl, gb->cpu.h);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_ld_$HL_L(struct GameBoy *gb) //0x75
 {
-	gb->cpu.rom[gb->cpu.hl] = gb->cpu.l;
+	bus_write(gb, gb->cpu.hl, gb->cpu.l);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -422,7 +422,7 @@ uint8_t op_halt(struct GameBoy *gb) //0x76
 
 uint8_t op_ld_$HL_A(struct GameBoy *gb) //0x77
 {
-	gb->cpu.rom[gb->cpu.hl] = gb->cpu.a;
+	bus_write(gb, gb->cpu.hl, gb->cpu.a);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -464,7 +464,7 @@ uint8_t op_ld_A_L(struct GameBoy *gb) //0x7d
 
 uint8_t op_ld_A_$HL(struct GameBoy *gb) //0x7e
 {
-	gb->cpu.a = gb->cpu.rom[gb->cpu.hl];
+	gb->cpu.a = bus_read(gb, gb->cpu.hl);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -500,8 +500,8 @@ uint8_t op_ret_NZ(struct GameBoy *gb) //0xc0
 		return gb->cpu.instr->dots[1];
 	}
 	fprintf(stderr, "fZ == 0 NZ=TRUE ");
-	gb->cpu.pc = ld_le16(gb->cpu.rom + gb->cpu.sp);
-	gb->cpu.sp += 2;
+	gb->cpu.pc = 0 | bus_read(gb, gb->cpu.sp++);
+	gb->cpu.pc |= (bus_read(gb, gb->cpu.sp++) << 8);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -512,23 +512,23 @@ uint8_t op_ret_Z(struct GameBoy *gb) //0xc8
 		fprintf(stderr, "fZ == 0 FALSE ");
 		return gb->cpu.instr->dots[1];
 	}
-	fprintf(stderr, "fZ == 0 TRUE ");
-	gb->cpu.pc = ld_le16(gb->cpu.rom + gb->cpu.sp);
-	gb->cpu.sp += 2;
+	fprintf(stderr, "fZ == 1 TRUE ");
+	gb->cpu.pc = 0 | bus_read(gb, gb->cpu.sp++);
+	gb->cpu.pc |= (bus_read(gb, gb->cpu.sp++) << 8);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_ret(struct GameBoy *gb) //0xc9
 {
-	gb->cpu.pc = ld_le16(gb->cpu.rom + gb->cpu.sp);
-	gb->cpu.sp += 2;
+	gb->cpu.pc = 0 | bus_read(gb, gb->cpu.sp++);
+	gb->cpu.pc |= (bus_read(gb, gb->cpu.sp++) << 8);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_jp_Z_a16(struct GameBoy *gb) //0xca
 {
-	int16_t a16 = ld_le16(gb->cpu.rom + gb->cpu.pc);
-	gb->cpu.pc += 2;
+	uint16_t a16 = bus_read(gb, gb->cpu.pc++);
+	a16 |= (bus_read(gb, gb->cpu.pc++) << 8);
 	fprintf(stderr, "0b%01b", gb->cpu.fZ);
 	if (!gb->cpu.fZ) {
 		return gb->cpu.instr->dots[1];
@@ -540,8 +540,8 @@ uint8_t op_jp_Z_a16(struct GameBoy *gb) //0xca
 
 uint8_t op_call_a16(struct GameBoy *gb) //0xcd
 {
-	int16_t a16 = ld_le16(gb->cpu.rom + gb->cpu.pc);
-	gb->cpu.pc += 2;
+	uint16_t a16 = bus_read(gb, gb->cpu.pc++);
+	a16 |= (bus_read(gb, gb->cpu.pc++) << 8);
 	call(gb, a16);
 	return gb->cpu.instr->dots[0];
 }
@@ -572,18 +572,14 @@ uint8_t op_rst_$18(struct GameBoy *gb) //0xdf
 
 uint8_t op_ldh_$a8_A(struct GameBoy *gb) //0xe0
 {
-	// TODO: invalid implementation. need bus
-	fprintf(stderr, "ERROR: op_ldh_$a8_A imlemented without bus\n");
-	exit(1);
-	int8_t a8 = gb->cpu.rom[gb->cpu.pc++];
-	gb->cpu.rom[0xff00 + a8] = gb->cpu.a;
+	uint8_t a8 = bus_read(gb, gb->cpu.pc++);
+	bus_write(gb, 0xFF00 + a8, gb->cpu.a);
 	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ld_$C_A(struct GameBoy *gb) //0xe2
+uint8_t op_ldh_$C_A(struct GameBoy *gb) //0xe2
 {
-	int8_t $c = gb->cpu.rom[gb->cpu.pc++];
-	gb->cpu.rom[0xff0 + $c] = gb->cpu.a;
+	bus_write(gb, 0xFF00 + gb->cpu.c, gb->cpu.a);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -601,9 +597,9 @@ uint8_t op_jp_HL(struct GameBoy *gb) //0xe9
 
 uint8_t op_ld_$a16_A(struct GameBoy *gb) //0xea
 {
-	int16_t a16 = ld_le16(gb->cpu.rom + gb->cpu.pc);
-	gb->cpu.pc += 2;
-	gb->cpu.rom[a16] = gb->cpu.a;
+	uint16_t a16 = bus_read(gb, gb->cpu.pc++);
+	a16 |= (bus_read(gb, gb->cpu.pc++) << 8);
+	bus_write(gb, a16, gb->cpu.a);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -615,11 +611,8 @@ uint8_t op_rst_$28(struct GameBoy *gb) //0xef
 
 uint8_t op_ldh_A_$a8(struct GameBoy *gb) //0xf0
 {
-	// TODO: invalid implementation. need bus
-	fprintf(stderr, "ERROR: op_ldh_A_$a8 imlemented without bus\n");
-	exit(1);
-	int8_t a8 = gb->cpu.rom[gb->cpu.pc++];
-	gb->cpu.a = gb->cpu.rom[0xff00 + a8];
+	uint8_t a8 = bus_read(gb, gb->cpu.pc++);
+	gb->cpu.a = bus_read(gb, 0xFF00 + a8);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -631,8 +624,8 @@ uint8_t op_di(struct GameBoy *gb) //0xf3
 
 uint8_t op_push_AF(struct GameBoy *gb) //0xf5
 {
-	gb->cpu.sp -= 2;
-	wr_le16(&gb->cpu.rom[gb->cpu.sp], gb->cpu.af);
+	bus_write(gb, --gb->cpu.sp, gb->cpu.a);
+	bus_write(gb, --gb->cpu.sp, gb->cpu.f);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -644,17 +637,17 @@ uint8_t op_rst_$30(struct GameBoy *gb) //0xf7
 
 uint8_t op_ld_A_$a16(struct GameBoy *gb) //0xfa
 {
-	int16_t a16 = ld_le16(gb->cpu.rom + gb->cpu.pc);
-	gb->cpu.pc += 2;
+	uint16_t a16 = bus_read(gb, gb->cpu.pc++);
+	a16 |= (bus_read(gb, gb->cpu.pc++) << 8);
 	fprintf(stderr, "-> a 0x%02x ", gb->cpu.a);
-	gb->cpu.a = gb->cpu.rom[a16];
+	gb->cpu.a = bus_read(gb, a16);
 	fprintf(stderr, "-> 0x%02x ", gb->cpu.a);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_cp_A_n8(struct GameBoy *gb) //0xfe
 {
-	uint8_t n8 = gb->cpu.rom[gb->cpu.pc++];
+	uint8_t n8 = bus_read(gb, gb->cpu.pc++);
 	gb->cpu.fZ = gb->cpu.a == n8;
 	gb->cpu.fN = 1;
 	gb->cpu.fH = (gb->cpu.a & 0x0f) < (n8 & 0x0f); //lsb a lt lsb n8
@@ -675,17 +668,18 @@ uint8_t op_rst_$38(struct GameBoy *gb) //0xff
 // ===========================================================================
 // ===========================================================================
 
-static inline void set_u3_$HL(uint8_t *dest, uint8_t n)
+static inline void set_u3_$HL(struct GameBoy *gb, uint8_t n)
 {
-	fprintf(stderr, "[HL] 0b%08b ", *dest);
-	*dest |= (1U << n);
-	fprintf(stderr, "0b%08b ", *dest);
+	uint8_t $hl = bus_read(gb, gb->cpu.hl);
+	fprintf(stderr, "hl 0x%04b [ 0x%02x] ", gb->cpu.hl, $hl);
+	bus_write(gb, gb->cpu.hl, $hl | (1U << n));
+	fprintf(stderr, "0x%02x ", bus_read(gb, gb->cpu.hl));
 }
 
 static inline void bit_u3_$HL(struct GameBoy *gb, uint8_t n)
 {
 	fprintf(stderr, "f 0x%02x ", gb->cpu.f);
-	uint8_t $hl = gb->cpu.rom[gb->cpu.hl];
+	uint8_t $hl = bus_read(gb, gb->cpu.hl);
 	gb->cpu.fZ = !($hl & (1 << n));
 	gb->cpu.fN = 0;
 	gb->cpu.fH = 1;
@@ -742,49 +736,49 @@ uint8_t cb_bit_7_$HL(struct GameBoy *gb) //0x7e
 
 uint8_t cb_set_0_$HL(struct GameBoy *gb) //0xc6
 {
-	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 0);
+	set_u3_$HL(gb, 0);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t cb_set_1_$HL(struct GameBoy *gb) //0xce
 {
-	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 1);
+	set_u3_$HL(gb, 1);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t cb_set_2_$HL(struct GameBoy *gb) //0xd6
 {
-	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 2);
+	set_u3_$HL(gb, 2);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t cb_set_3_$HL(struct GameBoy *gb) //0xde
 {
-	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 3);
+	set_u3_$HL(gb, 3);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t cb_set_4_$HL(struct GameBoy *gb) //0xe6
 {
-	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 4);
+	set_u3_$HL(gb, 4);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t cb_set_5_$HL(struct GameBoy *gb) //0xee
 {
-	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 5);
+	set_u3_$HL(gb, 5);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t cb_set_6_$HL(struct GameBoy *gb) //0xf6
 {
-	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 6);
+	set_u3_$HL(gb, 6);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t cb_set_7_$HL(struct GameBoy *gb) //0xfe
 {
-	set_u3_$HL(&gb->cpu.rom[gb->cpu.hl], 7);
+	set_u3_$HL(gb, 7);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -1352,10 +1346,8 @@ struct instr optbl[256] = {
 
 void cpu_fetch(struct GameBoy *gb)
 {
-	//cpu->op = cpu->rom[cpu->pc++];
 	gb->cpu.op = bus_read(gb, gb->cpu.pc++);
 	if (gb->cpu.op == 0xcb) {
-		//gb->cpu.op = cpu->rom[cpu->pc++];
 		gb->cpu.op = bus_read(gb, gb->cpu.pc++);
 		gb->cpu.instr = &cbtbl[gb->cpu.op];
 		gb->cpu.prefix = true;

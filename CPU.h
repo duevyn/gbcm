@@ -55,8 +55,6 @@ typedef struct CPU {
 	};
 	uint16_t pc, sp;
 	bool ime, dblspd, prefix, halted;
-	struct ctdg *cg;
-	uint8_t *rom;
 
 } CPU;
 
