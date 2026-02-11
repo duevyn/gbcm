@@ -2,6 +2,8 @@
 #include "GameBoy.h"
 #include <stdio.h>
 
+//#define fprintf(stderr, ...) ((void)0)
+
 const char *const ModeNames[] = {
 	"H Blank",
 	"V Blank",
@@ -87,6 +89,8 @@ void ppu_step(struct GameBoy *gb, int dots)
 
 	fprintf(stderr, "--- %s (ly=%d: ly_dots=%d)\n", ModeNames[gb->ppu.mode],
 		gb->ppu.ly, gb->ppu.ly_dots);
+	if (prv_mode != ModeNames[gb->ppu.mode] && gb->ppu.mode == OAM)
+		fprintf(stderr, "\n\n");
 
 	return;
 }

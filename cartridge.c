@@ -14,7 +14,6 @@ uint8_t cart_read(struct Cartridge *crt, uint16_t addr)
 
 void cart_write(struct Cartridge *crt, uint16_t addr, uint8_t data)
 {
-	fprintf(stderr, "-- write to cart ROM 0x%04x", addr);
 }
 
 void cart_load(struct Cartridge *crt, const char *path)

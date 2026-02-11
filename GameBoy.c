@@ -9,6 +9,8 @@ void initreg(struct GameBoy *gb)
 {
 	//gb->cpu.rom[P1] = 0xcf;
 	//gb->cpu.rom[SB] = 0x00;
+	gb->sb = 0x00;
+	gb->sc = 0x7e;
 	//gb->cpu.rom[SC] = 0x7e;
 	//gb->cpu.rom[DIV] = 0x18;
 
@@ -64,7 +66,7 @@ void initreg(struct GameBoy *gb)
 	gb->ppu.wy = 0x00;
 	gb->ppu.wx = 0x00;
 
-	gb->ie_reg = 0x00;
+	gb->ie = 0x00;
 }
 
 void initreg_cgb(struct CPU *cpu)
