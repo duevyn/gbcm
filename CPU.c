@@ -998,6 +998,7 @@ uint8_t op_ldh_A_$C(struct GameBoy *gb) //0xf2
 uint8_t op_di(struct GameBoy *gb) //0xf3
 {
 	gb->cpu.ime = false;
+	gb->cpu.ime_delay = 0;
 	return gb->cpu.instr->dots[0];
 }
 
@@ -1021,6 +1022,14 @@ uint8_t op_ld_A_$a16(struct GameBoy *gb) //0xfa
 	fprintf(stderr, "-> a 0x%02x ", gb->cpu.a);
 	gb->cpu.a = bus_read(gb, a16);
 	fprintf(stderr, "-> 0x%02x ", gb->cpu.a);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_ei(struct GameBoy *gb) //0xf3
+{
+	if (gb->cpu.ime_delay == 0)
+		gb->cpu.ime_delay = 2;
+
 	return gb->cpu.instr->dots[0];
 }
 
@@ -1716,7 +1725,7 @@ struct instr optbl[256] = {
 	[0xF8] = { "LD HL,SP,e8 2,12 00HC", NULL, 2, { 12, 12 }, 0xF8 },
 	[0xF9] = { "LD SP,HL 1,8", NULL, 1, { 8, 8 }, 0xF9 },
 	[0xFA] = { "LD A,[a16] 3,16", op_ld_A_$a16, 3, { 16, 16 }, 0xFA },
-	[0xFB] = { "EI 1,4", NULL, 1, { 4, 4 }, 0xFB },
+	[0xFB] = { "EI 1,4", op_ei, 1, { 4, 4 }, 0xFB },
 	[0xFC] = { "ILLEGAL_FC 1,4", NULL, 1, { 4, 4 }, 0xFC },
 	[0xFD] = { "ILLEGAL_FD 1,4", NULL, 1, { 4, 4 }, 0xFD },
 	[0xFE] = { "CP A,n8 2,8 Z1HC", op_cp_A_n8, 2, { 8, 8 }, 0xFE },
@@ -1757,6 +1766,12 @@ int cpu_exec(struct GameBoy *gb)
 
 	uint8_t result = gb->cpu.instr->exec(gb);
 	gb->cpu.prefix = false;
+
+	if (gb->cpu.ime_delay > 0 && --gb->cpu.ime_delay == 0) {
+		gb->cpu.ime = true;
+		fprintf(stderr, "** SET IME ");
+	}
+
 	return result;
 }
 

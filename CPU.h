@@ -4,14 +4,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define FLAG_Z 0x80
+#define FLAG_N 0x40
+#define FLAG_H 0x20
+#define FLAG_C 0x10
+
 struct GameBoy;
 struct instr;
-typedef enum fl_rgf {
-	C = 0b00010000,
-	H = 0b00100000,
-	N = 0b01000000,
-	Z = 0b10000000,
-} fl_rgf;
 
 typedef struct CPU {
 	uint16_t op;
@@ -55,6 +54,7 @@ typedef struct CPU {
 	};
 	uint16_t pc, sp;
 	bool ime, dblspd, prefix, halted;
+	int ime_delay;
 
 } CPU;
 

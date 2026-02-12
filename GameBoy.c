@@ -117,6 +117,7 @@ void gb_loadrom(struct GameBoy *gb, const char *path)
 	gb->cpu.hl = 0x000d; // cgb dmg ????
 
 	gb->cpu.ime = gb->cpu.dblspd = gb->cpu.prefix = false;
+	gb->cpu.ime_delay = 0;
 	gb->cpu.pc = 0x150; // assume valid rom. (gb->cpu.pc = 0x100)
 
 	fprintf(stderr,
