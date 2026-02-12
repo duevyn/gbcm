@@ -42,6 +42,19 @@ static inline uint8_t inc8(struct GameBoy *gb, uint8_t num)
 	return result;
 }
 
+static inline uint8_t or_xor_8(GameBoy *gb, uint8_t a, uint8_t b, bool xor)
+{
+	uint8_t result = xor? a ^ b : a | b;
+
+	gb->cpu.fZ = result == 0;
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = 0;
+
+	fprintf(stderr, "reg=0x%02x f=%08b xor? %b", result, gb->cpu.f, xor);
+	return result;
+}
+
 static inline void call(struct GameBoy *gb, uint16_t dest)
 {
 	bus_write(gb, --gb->cpu.sp, gb->cpu.pc >> 8);
@@ -746,26 +759,105 @@ uint8_t op_ld_A_A(struct GameBoy *gb) //0x7f
 	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_xor_A_A(struct GameBoy *gb) //0xaf
+uint8_t op_xor_A_B(struct GameBoy *gb) //0xA8
 {
-	gb->cpu.a ^= gb->cpu.a;
-	gb->cpu.fZ = 1;
-	gb->cpu.fN = 0;
-	gb->cpu.fH = 0;
-	gb->cpu.fC = 0;
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, gb->cpu.b, true);
 	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_or_A_A(struct GameBoy *gb) //0xb7
+uint8_t op_xor_A_C(struct GameBoy *gb) //0xA9
 {
-	gb->cpu.fZ = gb->cpu.a == 0;
-	gb->cpu.fN = 0;
-	gb->cpu.fH = 0;
-	gb->cpu.fC = 0;
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, gb->cpu.c, true);
 	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ret_NZ(struct GameBoy *gb) //0xc0
+uint8_t op_xor_A_D(struct GameBoy *gb) //0xAA
+{
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, gb->cpu.d, true);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_xor_A_E(struct GameBoy *gb) //0xAB
+{
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, gb->cpu.e, true);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_xor_A_H(struct GameBoy *gb) //0xAC
+{
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, gb->cpu.h, true);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_xor_A_L(struct GameBoy *gb) //0xAD
+{
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, gb->cpu.l, true);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_xor_A_$HL(struct GameBoy *gb) //0xAE
+{
+	uint8_t $hl = bus_read(gb, gb->cpu.hl);
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, $hl, true);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_xor_A_A(struct GameBoy *gb) //0xAF
+{
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, gb->cpu.a, true);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_or_A_B(struct GameBoy *gb) //0xB0
+{
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, gb->cpu.b, false);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_or_A_C(struct GameBoy *gb) //0xB1
+{
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, gb->cpu.c, false);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_or_A_D(struct GameBoy *gb) //0xB2
+{
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, gb->cpu.d, false);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_or_A_E(struct GameBoy *gb) //0xB3
+{
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, gb->cpu.e, false);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_or_A_H(struct GameBoy *gb) //0xB4
+{
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, gb->cpu.h, false);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_or_A_L(struct GameBoy *gb) //0xB5
+{
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, gb->cpu.l, false);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_or_A_$HL(struct GameBoy *gb) //0xB6
+{
+	uint8_t $hl = bus_read(gb, gb->cpu.hl);
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, $hl, false);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_or_A_A(struct GameBoy *gb) //0xB7
+{
+	gb->cpu.a = or_xor_8(gb, gb->cpu.a, gb->cpu.a, false);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_ret_NZ(struct GameBoy *gb) //0xC0
 {
 	fprintf(stderr, "fZ=%b ", gb->cpu.fZ);
 	if (gb->cpu.fZ) {
@@ -778,7 +870,7 @@ uint8_t op_ret_NZ(struct GameBoy *gb) //0xc0
 	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_jp_a16(struct GameBoy *gb) //0xc3
+uint8_t op_jp_a16(struct GameBoy *gb) //0xC3
 {
 	uint16_t a16 = bus_read(gb, gb->cpu.pc++);
 	a16 |= (bus_read(gb, gb->cpu.pc++) << 8);
@@ -1541,21 +1633,21 @@ struct instr optbl[256] = {
 	[0xA5] = { "AND A,L 1,4 Z010", NULL, 1, { 4, 4 }, 0xA5 },
 	[0xA6] = { "AND A,[HL] 1,8 Z010", NULL, 1, { 8, 8 }, 0xA6 },
 	[0xA7] = { "AND A,A 1,4 Z010", NULL, 1, { 4, 4 }, 0xA7 },
-	[0xA8] = { "XOR A,B 1,4 Z000", NULL, 1, { 4, 4 }, 0xA8 },
-	[0xA9] = { "XOR A,C 1,4 Z000", NULL, 1, { 4, 4 }, 0xA9 },
-	[0xAA] = { "XOR A,D 1,4 Z000", NULL, 1, { 4, 4 }, 0xAA },
-	[0xAB] = { "XOR A,E 1,4 Z000", NULL, 1, { 4, 4 }, 0xAB },
-	[0xAC] = { "XOR A,H 1,4 Z000", NULL, 1, { 4, 4 }, 0xAC },
-	[0xAD] = { "XOR A,L 1,4 Z000", NULL, 1, { 4, 4 }, 0xAD },
-	[0xAE] = { "XOR A,[HL] 1,8 Z000", NULL, 1, { 8, 8 }, 0xAE },
+	[0xA8] = { "XOR A,B 1,4 Z000", op_xor_A_B, 1, { 4, 4 }, 0xA8 },
+	[0xA9] = { "XOR A,C 1,4 Z000", op_xor_A_C, 1, { 4, 4 }, 0xA9 },
+	[0xAA] = { "XOR A,D 1,4 Z000", op_xor_A_D, 1, { 4, 4 }, 0xAA },
+	[0xAB] = { "XOR A,E 1,4 Z000", op_xor_A_E, 1, { 4, 4 }, 0xAB },
+	[0xAC] = { "XOR A,H 1,4 Z000", op_xor_A_H, 1, { 4, 4 }, 0xAC },
+	[0xAD] = { "XOR A,L 1,4 Z000", op_xor_A_L, 1, { 4, 4 }, 0xAD },
+	[0xAE] = { "XOR A,[HL] 1,8 Z000", op_xor_A_$HL, 1, { 8, 8 }, 0xAE },
 	[0xAF] = { "XOR A,A 1,4 1000", op_xor_A_A, 1, { 4, 4 }, 0xAF },
-	[0xB0] = { "OR A,B 1,4 Z000", NULL, 1, { 4, 4 }, 0xB0 },
-	[0xB1] = { "OR A,C 1,4 Z000", NULL, 1, { 4, 4 }, 0xB1 },
-	[0xB2] = { "OR A,D 1,4 Z000", NULL, 1, { 4, 4 }, 0xB2 },
-	[0xB3] = { "OR A,E 1,4 Z000", NULL, 1, { 4, 4 }, 0xB3 },
-	[0xB4] = { "OR A,H 1,4 Z000", NULL, 1, { 4, 4 }, 0xB4 },
-	[0xB5] = { "OR A,L 1,4 Z000", NULL, 1, { 4, 4 }, 0xB5 },
-	[0xB6] = { "OR A,[HL] 1,8 Z000", NULL, 1, { 8, 8 }, 0xB6 },
+	[0xB0] = { "OR A,B 1,4 Z000", op_or_A_B, 1, { 4, 4 }, 0xB0 },
+	[0xB1] = { "OR A,C 1,4 Z000", op_or_A_C, 1, { 4, 4 }, 0xB1 },
+	[0xB2] = { "OR A,D 1,4 Z000", op_or_A_D, 1, { 4, 4 }, 0xB2 },
+	[0xB3] = { "OR A,E 1,4 Z000", op_or_A_E, 1, { 4, 4 }, 0xB3 },
+	[0xB4] = { "OR A,H 1,4 Z000", op_or_A_H, 1, { 4, 4 }, 0xB4 },
+	[0xB5] = { "OR A,L 1,4 Z000", op_or_A_L, 1, { 4, 4 }, 0xB5 },
+	[0xB6] = { "OR A,[HL] 1,8 Z000", op_or_A_$HL, 1, { 8, 8 }, 0xB6 },
 	[0xB7] = { "OR A,A 1,4 Z000", op_or_A_A, 1, { 4, 4 }, 0xB7 },
 	[0xB8] = { "CP A,B 1,4 Z1HC", NULL, 1, { 4, 4 }, 0xB8 },
 	[0xB9] = { "CP A,C 1,4 Z1HC", NULL, 1, { 4, 4 }, 0xB9 },
