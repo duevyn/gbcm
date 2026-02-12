@@ -42,6 +42,19 @@ static inline uint8_t inc8(struct GameBoy *gb, uint8_t num)
 	return result;
 }
 
+static inline uint8_t swap8(struct GameBoy *gb, uint8_t num)
+{
+	uint8_t result = ((num >> 4) | (num << 4));
+
+	gb->cpu.fZ = result == 0;
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = 0;
+
+	fprintf(stderr, "%08b -> %08b ", num, result);
+	return result;
+}
+
 static inline uint8_t or_xor_8(GameBoy *gb, uint8_t a, uint8_t b, bool xor)
 {
 	uint8_t result = xor? a ^ b : a | b;
@@ -75,9 +88,10 @@ static inline void call(struct GameBoy *gb, uint16_t dest)
 	bus_write(gb, --gb->cpu.sp, gb->cpu.pc >> 8);
 	bus_write(gb, --gb->cpu.sp, gb->cpu.pc);
 
-	fprintf(stderr, "pc=0x%04x a16=0x%04x [sp] 0x%04x (0x%04x)", gb->cpu.pc,
-		dest, *(uint16_t *)(gb->hram - gb->cpu.sp - 2),
-		*(uint16_t *)(&gb->hram[gb->cpu.sp - 0xFF80 - 2]));
+	fprintf(stderr, "pc=0x%04x a16=0x%04x [sp 0x%04x] 0x%04x (0x%04x)",
+		gb->cpu.pc, dest, gb->cpu.sp,
+		*(uint16_t *)(gb->hram - gb->cpu.sp - 2),
+		*(uint16_t *)(&gb->wram[gb->cpu.sp - 0xc000]));
 
 	gb->cpu.pc = dest;
 }
@@ -1162,6 +1176,56 @@ static inline void bit_u3_$HL(struct GameBoy *gb, uint8_t n)
 	fprintf(stderr, "[HL] 0b%08b f 0x%02x", $hl, gb->cpu.f);
 }
 
+uint8_t cb_swap_B(struct GameBoy *gb) //0x30
+{
+	gb->cpu.b = swap8(gb, gb->cpu.b);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t cb_swap_C(struct GameBoy *gb) //0x31
+{
+	gb->cpu.c = swap8(gb, gb->cpu.c);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t cb_swap_D(struct GameBoy *gb) //0x32
+{
+	gb->cpu.d = swap8(gb, gb->cpu.d);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t cb_swap_E(struct GameBoy *gb) //0x33
+{
+	gb->cpu.e = swap8(gb, gb->cpu.e);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t cb_swap_H(struct GameBoy *gb) //0x34
+{
+	gb->cpu.h = swap8(gb, gb->cpu.h);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t cb_swap_L(struct GameBoy *gb) //0x35
+{
+	gb->cpu.l = swap8(gb, gb->cpu.l);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t cb_swap_$HL(struct GameBoy *gb) //0x36
+{
+	uint8_t $hl = bus_read(gb, gb->cpu.hl);
+	$hl = swap8(gb, gb->cpu.b);
+	bus_write(gb, gb->cpu.hl, $hl);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t cb_swap_A(struct GameBoy *gb) //0x37
+{
+	gb->cpu.a = swap8(gb, gb->cpu.a);
+	return gb->cpu.instr->dots[0];
+}
+
 uint8_t cb_bit_0_$HL(struct GameBoy *gb) //0x46
 {
 	bit_u3_$HL(gb, 0);
@@ -1307,14 +1371,18 @@ struct instr cbtbl[256] = {
 	[0x2D] = { "*** cb SRA L 2,8 Z00C", NULL, 2, { 8, 8 }, 0x2D },
 	[0x2E] = { "*** cb SRA [HL] 2,16 Z00C", NULL, 2, { 16, 16 }, 0x2E },
 	[0x2F] = { "*** cb SRA A 2,8 Z00C", NULL, 2, { 8, 8 }, 0x2F },
-	[0x30] = { "*** cb SWAP B 2,8 Z000", NULL, 2, { 8, 8 }, 0x30 },
-	[0x31] = { "*** cb SWAP C 2,8 Z000", NULL, 2, { 8, 8 }, 0x31 },
-	[0x32] = { "*** cb SWAP D 2,8 Z000", NULL, 2, { 8, 8 }, 0x32 },
-	[0x33] = { "*** cb SWAP E 2,8 Z000", NULL, 2, { 8, 8 }, 0x33 },
-	[0x34] = { "*** cb SWAP H 2,8 Z000", NULL, 2, { 8, 8 }, 0x34 },
-	[0x35] = { "*** cb SWAP L 2,8 Z000", NULL, 2, { 8, 8 }, 0x35 },
-	[0x36] = { "*** cb SWAP [HL] 2,16 Z000", NULL, 2, { 16, 16 }, 0x36 },
-	[0x37] = { "*** cb SWAP A 2,8 Z000", NULL, 2, { 8, 8 }, 0x37 },
+	[0x30] = { "*** cb SWAP B 2,8 Z000", cb_swap_B, 2, { 8, 8 }, 0x30 },
+	[0x31] = { "*** cb SWAP C 2,8 Z000", cb_swap_C, 2, { 8, 8 }, 0x31 },
+	[0x32] = { "*** cb SWAP D 2,8 Z000", cb_swap_D, 2, { 8, 8 }, 0x32 },
+	[0x33] = { "*** cb SWAP E 2,8 Z000", cb_swap_E, 2, { 8, 8 }, 0x33 },
+	[0x34] = { "*** cb SWAP H 2,8 Z000", cb_swap_H, 2, { 8, 8 }, 0x34 },
+	[0x35] = { "*** cb SWAP L 2,8 Z000", cb_swap_L, 2, { 8, 8 }, 0x35 },
+	[0x36] = { "*** cb SWAP [HL] 2,16 Z000",
+		   cb_swap_$HL,
+		   2,
+		   { 16, 16 },
+		   0x36 },
+	[0x37] = { "*** cb SWAP A 2,8 Z000", cb_swap_A, 2, { 8, 8 }, 0x37 },
 	[0x38] = { "*** cb SRL B 2,8 Z00C", NULL, 2, { 8, 8 }, 0x38 },
 	[0x39] = { "*** cb SRL C 2,8 Z00C", NULL, 2, { 8, 8 }, 0x39 },
 	[0x3A] = { "*** cb SRL D 2,8 Z00C", NULL, 2, { 8, 8 }, 0x3A },

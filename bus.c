@@ -5,7 +5,7 @@
 //#define fprintf(stderr, ...) ((void)0)
 uint8_t io_read(struct GameBoy *gb, uint16_t addr)
 {
-	uint8_t data;
+	uint8_t data = 0;
 	switch (addr) {
 	case 0xFF01:
 		data = gb->sb;
@@ -71,7 +71,7 @@ uint8_t io_read(struct GameBoy *gb, uint16_t addr)
 			data);
 		break;
 	}
-	return -1;
+	return 0;
 }
 
 uint8_t bus_read(struct GameBoy *gb, uint16_t addr)
