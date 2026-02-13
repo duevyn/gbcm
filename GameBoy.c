@@ -120,6 +120,15 @@ void gb_loadrom(struct GameBoy *gb, const char *path)
 	gb->cpu.ime_delay = 0;
 	gb->cpu.pc = 0x150; // assume valid rom. (gb->cpu.pc = 0x100)
 
+	gb->cpu.rg[0] = &gb->cpu.b;
+	gb->cpu.rg[1] = &gb->cpu.c;
+	gb->cpu.rg[2] = &gb->cpu.d;
+	gb->cpu.rg[3] = &gb->cpu.e;
+	gb->cpu.rg[4] = &gb->cpu.h;
+	gb->cpu.rg[5] = &gb->cpu.l;
+	gb->cpu.rg[6] = NULL;
+	gb->cpu.rg[7] = &gb->cpu.a;
+
 	fprintf(stderr,
 		"pc: 0x%04x af 0x%04x (addr 0x%p), a 0x%02x (addr 0x%p), f 0x%02x (addr 0x%p)\n",
 		gb->cpu.pc, gb->cpu.af, &gb->cpu.af, gb->cpu.a, &gb->cpu.a,

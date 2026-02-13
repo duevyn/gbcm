@@ -52,6 +52,7 @@ typedef struct CPU {
 			uint8_t h; //(msb)
 		};
 	};
+	uint8_t *rg[8];
 	uint16_t pc, sp;
 	bool ime, dblspd, prefix, halted;
 	int ime_delay;
