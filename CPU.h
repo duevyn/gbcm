@@ -56,6 +56,7 @@ typedef struct CPU {
 	uint16_t pc, sp;
 	bool ime, dblspd, prefix, halted;
 	int ime_delay;
+	uint64_t cnt, dcnt;
 
 } CPU;
 
