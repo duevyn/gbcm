@@ -75,6 +75,22 @@ static inline uint8_t add8(GameBoy *gb, uint8_t a, uint8_t b, uint8_t carry)
 	return result;
 }
 
+static inline uint8_t sub8(GameBoy *gb, uint8_t a, uint8_t b, uint8_t carry)
+{
+	uint16_t sub = b + carry;
+	uint16_t diff = (uint16_t)a - sub;
+	uint8_t result = (uint8_t)diff;
+
+	gb->cpu.fZ = (result == 0);
+	gb->cpu.fN = 1;
+	gb->cpu.fH = ((a & 0x0F) < (sub & 0x0F));
+	gb->cpu.fC = (a < sub);
+
+	fprintf(stderr, "0x%02x - 0x%04x = %02x f=%08b ", a, b, result,
+		gb->cpu.f);
+	return result;
+}
+
 static inline uint16_t add16(GameBoy *gb, uint16_t a, uint16_t b)
 {
 	uint32_t sum = a + b;
@@ -155,6 +171,14 @@ uint8_t op_dec_B(struct GameBoy *gb) //0x05
 uint8_t op_ld_B_n8(struct GameBoy *gb) //0x06
 {
 	gb->cpu.b = bus_read(gb, gb->cpu.pc++);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_ld_a16_SP(struct GameBoy *gb) //0x08
+{
+	uint16_t a16 = bus_read(gb, gb->cpu.pc++);
+	a16 |= (bus_read(gb, gb->cpu.pc++) << 8);
+	gb->cpu.a = bus_read(gb, gb->cpu.bc);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -407,7 +431,7 @@ uint8_t op_jr_NC_e8(struct GameBoy *gb) //0x30
 
 uint8_t op_ld_sp_n16(struct GameBoy *gb) //0x31
 {
-	gb->cpu.sp = 0 | bus_read(gb, gb->cpu.pc++);
+	gb->cpu.sp = bus_read(gb, gb->cpu.pc++);
 	gb->cpu.sp |= (bus_read(gb, gb->cpu.pc++) << 8);
 	return gb->cpu.instr->dots[0];
 }
@@ -444,6 +468,24 @@ uint8_t op_ld_$HL_n8(struct GameBoy *gb) //0x36
 {
 	uint8_t n8 = bus_read(gb, gb->cpu.pc++);
 	bus_write(gb, gb->cpu.hl, n8);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_scf(struct GameBoy *gb) //0x37
+{
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = 1;
+
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_ccf(struct GameBoy *gb) //0x37
+{
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = ~gb->cpu.fC;
+
 	return gb->cpu.instr->dots[0];
 }
 
@@ -977,6 +1019,103 @@ uint8_t op_adc_A_A(struct GameBoy *gb) //0x8F
 	return gb->cpu.instr->dots[0];
 }
 
+uint8_t op_sub_A_B(struct GameBoy *gb) //0x90
+{
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.b, 0);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sub_A_C(struct GameBoy *gb) //0x91
+{
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.c, 0);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sub_A_D(struct GameBoy *gb) //0x92
+{
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.d, 0);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sub_A_E(struct GameBoy *gb) //0x93
+{
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.e, 0);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sub_A_H(struct GameBoy *gb) //0x94
+{
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.h, 0);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sub_A_L(struct GameBoy *gb) //0x95
+{
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.l, 0);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sub_A_$HL(struct GameBoy *gb) //0x96
+{
+	uint8_t $hl = bus_read(gb, gb->cpu.hl);
+	gb->cpu.a = sub8(gb, gb->cpu.a, $hl, 0);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sub_A_A(struct GameBoy *gb) //0x97
+{
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.a, 0);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sbc_A_B(struct GameBoy *gb) //0x98
+{
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.b, 1);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sbc_A_C(struct GameBoy *gb) //0x99
+{
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.c, 1);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sbc_A_D(struct GameBoy *gb) //0x9A
+{
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.d, 1);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sbc_A_E(struct GameBoy *gb) //0x9B
+{
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.e, 1);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sbc_A_H(struct GameBoy *gb) //0x9C
+{
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.h, 1);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sbc_A_L(struct GameBoy *gb) //0x9D
+{
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.l, 1);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sbc_A_$HL(struct GameBoy *gb) //0x9E
+{
+	uint8_t $hl = bus_read(gb, gb->cpu.hl);
+	gb->cpu.a = sub8(gb, gb->cpu.a, $hl, 1);
+	return gb->cpu.instr->dots[0];
+}
+uint8_t op_sbc_A_A(struct GameBoy *gb) //0x9F
+{
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.a, 1);
+	return gb->cpu.instr->dots[0];
+}
+
 uint8_t op_and_A_B(struct GameBoy *gb) //0xA0
 {
 	gb->cpu.a = and8(gb, gb->cpu.a, gb->cpu.b);
@@ -1124,6 +1263,54 @@ uint8_t op_or_A_A(struct GameBoy *gb) //0xB7
 	return gb->cpu.instr->dots[0];
 }
 
+uint8_t op_cp_A_B(struct GameBoy *gb) //0xB8
+{
+	sub8(gb, gb->cpu.a, gb->cpu.b, 0);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_cp_A_C(struct GameBoy *gb) //0xB9
+{
+	sub8(gb, gb->cpu.a, gb->cpu.c, 0);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_cp_A_D(struct GameBoy *gb) //0xBA
+{
+	sub8(gb, gb->cpu.a, gb->cpu.d, 0);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_cp_A_E(struct GameBoy *gb) //0xBB
+{
+	sub8(gb, gb->cpu.a, gb->cpu.e, 0);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_cp_A_H(struct GameBoy *gb) //0xBC
+{
+	sub8(gb, gb->cpu.a, gb->cpu.h, 0);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_cp_A_L(struct GameBoy *gb) //0xBD
+{
+	sub8(gb, gb->cpu.a, gb->cpu.l, 0);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_cp_A_$HL(struct GameBoy *gb) //0xBE
+{
+	uint8_t $hl = bus_read(gb, gb->cpu.hl);
+	sub8(gb, gb->cpu.a, $hl, 0);
+	return gb->cpu.instr->dots[0];
+}
+uint8_t op_cp_A_A(struct GameBoy *gb) //0xBF
+{
+	sub8(gb, gb->cpu.a, gb->cpu.a, 0);
+	return gb->cpu.instr->dots[0];
+}
+
 uint8_t op_ret_NZ(struct GameBoy *gb) //0xC0
 {
 	fprintf(stderr, "fZ=%b ", gb->cpu.fZ);
@@ -1157,6 +1344,14 @@ uint8_t op_jp_NZ_a16(struct GameBoy *gb) //0xC2
 	return gb->cpu.instr->dots[0];
 }
 
+uint8_t op_jp_a16(struct GameBoy *gb) //0xC3
+{
+	uint16_t a16 = bus_read(gb, gb->cpu.pc++);
+	a16 |= (bus_read(gb, gb->cpu.pc++) << 8);
+	gb->cpu.pc = a16;
+	return gb->cpu.instr->dots[0];
+}
+
 uint8_t op_call_NZ_a16(struct GameBoy *gb) //0xC4
 {
 	uint16_t a16 = bus_read(gb, gb->cpu.pc++);
@@ -1175,15 +1370,20 @@ uint8_t op_push_BC(struct GameBoy *gb) //0xC5
 	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_jp_a16(struct GameBoy *gb) //0xC3
+uint8_t op_add_A_n8(struct GameBoy *gb) //0xC6
 {
-	uint16_t a16 = bus_read(gb, gb->cpu.pc++);
-	a16 |= (bus_read(gb, gb->cpu.pc++) << 8);
-	gb->cpu.pc = a16;
+	uint8_t n8 = bus_read(gb, gb->cpu.pc++);
+	gb->cpu.a = add8(gb, gb->cpu.a, n8, 0);
 	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ret_Z(struct GameBoy *gb) //0xc8
+uint8_t op_rst_$00(struct GameBoy *gb) //0xC7
+{
+	call(gb, 0x00);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_ret_Z(struct GameBoy *gb) //0xC8
 {
 	fprintf(stderr, "fZ=%b ", gb->cpu.fZ);
 	if (!gb->cpu.fZ) {
@@ -1191,19 +1391,19 @@ uint8_t op_ret_Z(struct GameBoy *gb) //0xc8
 		return gb->cpu.instr->dots[1];
 	}
 	fprintf(stderr, "fZ == 1 TRUE ");
-	gb->cpu.pc = 0 | bus_read(gb, gb->cpu.sp++);
+	gb->cpu.pc = bus_read(gb, gb->cpu.sp++);
 	gb->cpu.pc |= (bus_read(gb, gb->cpu.sp++) << 8);
 	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ret(struct GameBoy *gb) //0xc9
+uint8_t op_ret(struct GameBoy *gb) //0xC9
 {
 	gb->cpu.pc = bus_read(gb, gb->cpu.sp++);
 	gb->cpu.pc |= (bus_read(gb, gb->cpu.sp++) << 8);
 	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_jp_Z_a16(struct GameBoy *gb) //0xca
+uint8_t op_jp_Z_a16(struct GameBoy *gb) //0xCA
 {
 	uint16_t a16 = bus_read(gb, gb->cpu.pc++);
 	a16 |= (bus_read(gb, gb->cpu.pc++) << 8);
@@ -1228,7 +1428,7 @@ uint8_t op_call_Z_a16(struct GameBoy *gb) //0xCC
 	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_call_a16(struct GameBoy *gb) //0xcd
+uint8_t op_call_a16(struct GameBoy *gb) //0xCD
 {
 	uint16_t a16 = bus_read(gb, gb->cpu.pc++);
 	a16 |= (bus_read(gb, gb->cpu.pc++) << 8);
@@ -1236,9 +1436,10 @@ uint8_t op_call_a16(struct GameBoy *gb) //0xcd
 	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_rst_$00(struct GameBoy *gb) //0xc7
+uint8_t op_adc_A_n8(struct GameBoy *gb) //0xCE
 {
-	call(gb, 0x00);
+	uint8_t n8 = bus_read(gb, gb->cpu.pc++);
+	gb->cpu.a = add8(gb, gb->cpu.a, n8, 1);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -1298,6 +1499,13 @@ uint8_t op_push_DE(struct GameBoy *gb) //0xD5
 	return gb->cpu.instr->dots[0];
 }
 
+uint8_t op_sub_A_n8(struct GameBoy *gb) //0xD6
+{
+	uint8_t n8 = bus_read(gb, gb->cpu.pc++);
+	gb->cpu.a = sub8(gb, gb->cpu.a, n8, 0);
+	return gb->cpu.instr->dots[0];
+}
+
 uint8_t op_rst_$10(struct GameBoy *gb) //0xd7
 {
 	call(gb, 0x10);
@@ -1312,7 +1520,7 @@ uint8_t op_ret_C(struct GameBoy *gb) //0xD8
 		return gb->cpu.instr->dots[1];
 	}
 	fprintf(stderr, "fC == 1 TRUE ");
-	gb->cpu.pc = 0 | bus_read(gb, gb->cpu.sp++);
+	gb->cpu.pc = bus_read(gb, gb->cpu.sp++);
 	gb->cpu.pc |= (bus_read(gb, gb->cpu.sp++) << 8);
 	return gb->cpu.instr->dots[0];
 }
@@ -1349,6 +1557,13 @@ uint8_t op_call_C_a16(struct GameBoy *gb) //0xDC
 		return gb->cpu.instr->dots[1];
 	}
 	call(gb, a16);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_sbc_A_n8(struct GameBoy *gb) //0xDE
+{
+	uint8_t n8 = bus_read(gb, gb->cpu.pc++);
+	gb->cpu.a = sub8(gb, gb->cpu.a, n8, 1);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -1393,6 +1608,20 @@ uint8_t op_and_A_n8(struct GameBoy *gb) //0xE6
 uint8_t op_rst_$20(struct GameBoy *gb) //0xE7
 {
 	call(gb, 0x20);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_add_SP_e8(struct GameBoy *gb) //0xE9
+{
+	uint8_t e8 = bus_read(gb, gb->cpu.pc++);
+	uint16_t prev = gb->cpu.sp;
+	gb->cpu.sp += (int8_t)e8;
+
+	gb->cpu.fZ = 0;
+	gb->cpu.fN = 0;
+	gb->cpu.fH = ((prev & 0x0F) + (e8 & 0x0F) > 0x0F);
+	gb->cpu.fC = (((prev & 0xFF) + e8) > 0xFF);
+
 	return gb->cpu.instr->dots[0];
 }
 
@@ -1474,6 +1703,25 @@ uint8_t op_or_A_n8(struct GameBoy *gb) //0xF6
 uint8_t op_rst_$30(struct GameBoy *gb) //0xF7
 {
 	call(gb, 0x30);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_ld_HL_SP_e8(struct GameBoy *gb) //0xF8
+{
+	uint8_t e8 = bus_read(gb, gb->cpu.pc++);
+	gb->cpu.hl = gb->cpu.sp + (int8_t)e8;
+
+	gb->cpu.fZ = 0;
+	gb->cpu.fN = 0;
+	gb->cpu.fH = ((gb->cpu.sp & 0x0F) + (e8 & 0x0F) > 0x0F);
+	gb->cpu.fC = (((gb->cpu.sp & 0xFF) + e8) > 0xFF);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_ld_SP_HL(struct GameBoy *gb) //0xF9
+{
+	uint8_t e8 = bus_read(gb, gb->cpu.pc++);
+	gb->cpu.sp = gb->cpu.hl;
 	return gb->cpu.instr->dots[0];
 }
 
@@ -1641,7 +1889,7 @@ struct instr optbl[256] = {
 	[0x05] = { "DEC B 1,4 Z1H-", op_dec_B, 1, { 4, 4 }, 0x05 },
 	[0x06] = { "LD B,n8 2,8", op_ld_B_n8, 2, { 8, 8 }, 0x06 },
 	[0x07] = { "RLCA 1,4 000C", NULL, 1, { 4, 4 }, 0x07 },
-	[0x08] = { "LD [a16],SP 3,20", NULL, 3, { 20, 20 }, 0x08 },
+	[0x08] = { "LD [a16],SP 3,20", op_ld_a16_SP, 3, { 20, 20 }, 0x08 },
 	[0x09] = { "ADD HL,BC 1,8 -0HC", op_add_HL_BC, 1, { 8, 8 }, 0x09 },
 	[0x0A] = { "LD A,[BC] 1,8", op_ld_A_$BC, 1, { 8, 8 }, 0x0A },
 	[0x0B] = { "DEC BC 1,8", op_dec_BC, 1, { 8, 8 }, 0x0B },
@@ -1688,7 +1936,7 @@ struct instr optbl[256] = {
 	[0x34] = { "INC [HL] 1,12 Z0H-", op_inc_$HL, 1, { 12, 12 }, 0x34 },
 	[0x35] = { "DEC [HL] 1,12 Z1H-", op_dec_$HL, 1, { 12, 12 }, 0x35 },
 	[0x36] = { "LD [HL],n8 2,12", op_ld_$HL_n8, 2, { 12, 12 }, 0x36 },
-	[0x37] = { "SCF 1,4 -001", NULL, 1, { 4, 4 }, 0x37 },
+	[0x37] = { "SCF 1,4 -001", op_scf, 1, { 4, 4 }, 0x37 },
 	[0x38] = { "JR C,e8 2,12/8", op_jr_C_e8, 2, { 12, 8 }, 0x38 },
 	[0x39] = { "ADD HL,SP 1,8 -0HC", op_add_HL_SP, 1, { 8, 8 }, 0x39 },
 	[0x3A] = { "LD A,[HL] 1,8", op_ld_A_$HLD, 1, { 8, 8 }, 0x3A },
@@ -1696,7 +1944,7 @@ struct instr optbl[256] = {
 	[0x3C] = { "INC A 1,4 Z0H-", op_inc_A, 1, { 4, 4 }, 0x3C },
 	[0x3D] = { "DEC A 1,4 Z1H-", op_dec_A, 1, { 4, 4 }, 0x3D },
 	[0x3E] = { "LD A,n8 2,8", op_ld_A_n8, 2, { 8, 8 }, 0x3E },
-	[0x3F] = { "CCF 1,4 -00C", NULL, 1, { 4, 4 }, 0x3F },
+	[0x3F] = { "CCF 1,4 -00C", op_ccf, 1, { 4, 4 }, 0x3F },
 	[0x40] = { "LD B,B 1,4", op_ld_B_B, 1, { 4, 4 }, 0x40 },
 	[0x41] = { "LD B,C 1,4", op_ld_B_C, 1, { 4, 4 }, 0x41 },
 	[0x42] = { "LD B,D 1,4", op_ld_B_D, 1, { 4, 4 }, 0x42 },
@@ -1777,22 +2025,22 @@ struct instr optbl[256] = {
 	[0x8D] = { "ADC A,L 1,4 Z0HC", op_adc_A_L, 1, { 4, 4 }, 0x8D },
 	[0x8E] = { "ADC A,[HL] 1,8 Z0HC", op_adc_A_$HL, 1, { 8, 8 }, 0x8E },
 	[0x8F] = { "ADC A,A 1,4 Z0HC", op_adc_A_A, 1, { 4, 4 }, 0x8F },
-	[0x90] = { "SUB A,B 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x90 },
-	[0x91] = { "SUB A,C 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x91 },
-	[0x92] = { "SUB A,D 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x92 },
-	[0x93] = { "SUB A,E 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x93 },
-	[0x94] = { "SUB A,H 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x94 },
-	[0x95] = { "SUB A,L 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x95 },
-	[0x96] = { "SUB A,[HL] 1,8 Z1HC", NULL, 1, { 8, 8 }, 0x96 },
-	[0x97] = { "SUB A,A 1,4 1100", NULL, 1, { 4, 4 }, 0x97 },
-	[0x98] = { "SBC A,B 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x98 },
-	[0x99] = { "SBC A,C 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x99 },
-	[0x9A] = { "SBC A,D 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x9A },
-	[0x9B] = { "SBC A,E 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x9B },
-	[0x9C] = { "SBC A,H 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x9C },
-	[0x9D] = { "SBC A,L 1,4 Z1HC", NULL, 1, { 4, 4 }, 0x9D },
-	[0x9E] = { "SBC A,[HL] 1,8 Z1HC", NULL, 1, { 8, 8 }, 0x9E },
-	[0x9F] = { "SBC A,A 1,4 Z1H-", NULL, 1, { 4, 4 }, 0x9F },
+	[0x90] = { "SUB A,B 1,4 Z1HC", op_sub_A_B, 1, { 4, 4 }, 0x90 },
+	[0x91] = { "SUB A,C 1,4 Z1HC", op_sub_A_C, 1, { 4, 4 }, 0x91 },
+	[0x92] = { "SUB A,D 1,4 Z1HC", op_sub_A_D, 1, { 4, 4 }, 0x92 },
+	[0x93] = { "SUB A,E 1,4 Z1HC", op_sub_A_E, 1, { 4, 4 }, 0x93 },
+	[0x94] = { "SUB A,H 1,4 Z1HC", op_sub_A_H, 1, { 4, 4 }, 0x94 },
+	[0x95] = { "SUB A,L 1,4 Z1HC", op_sub_A_L, 1, { 4, 4 }, 0x95 },
+	[0x96] = { "SUB A,[HL] 1,8 Z1HC", op_sub_A_$HL, 1, { 8, 8 }, 0x96 },
+	[0x97] = { "SUB A,A 1,4 1100", op_sub_A_A, 1, { 4, 4 }, 0x97 },
+	[0x98] = { "SBC A,B 1,4 Z1HC", op_sbc_A_B, 1, { 4, 4 }, 0x98 },
+	[0x99] = { "SBC A,C 1,4 Z1HC", op_sbc_A_C, 1, { 4, 4 }, 0x99 },
+	[0x9A] = { "SBC A,D 1,4 Z1HC", op_sbc_A_D, 1, { 4, 4 }, 0x9A },
+	[0x9B] = { "SBC A,E 1,4 Z1HC", op_sbc_A_E, 1, { 4, 4 }, 0x9B },
+	[0x9C] = { "SBC A,H 1,4 Z1HC", op_sbc_A_H, 1, { 4, 4 }, 0x9C },
+	[0x9D] = { "SBC A,L 1,4 Z1HC", op_sbc_A_L, 1, { 4, 4 }, 0x9D },
+	[0x9E] = { "SBC A,[HL] 1,8 Z1HC", op_sbc_A_$HL, 1, { 8, 8 }, 0x9E },
+	[0x9F] = { "SBC A,A 1,4 Z1H-", op_sbc_A_A, 1, { 4, 4 }, 0x9F },
 	[0xA0] = { "AND A,B 1,4 Z010", op_and_A_B, 1, { 4, 4 }, 0xA0 },
 	[0xA1] = { "AND A,C 1,4 Z010", op_and_A_C, 1, { 4, 4 }, 0xA1 },
 	[0xA2] = { "AND A,D 1,4 Z010", op_and_A_D, 1, { 4, 4 }, 0xA2 },
@@ -1817,21 +2065,21 @@ struct instr optbl[256] = {
 	[0xB5] = { "OR A,L 1,4 Z000", op_or_A_L, 1, { 4, 4 }, 0xB5 },
 	[0xB6] = { "OR A,[HL] 1,8 Z000", op_or_A_$HL, 1, { 8, 8 }, 0xB6 },
 	[0xB7] = { "OR A,A 1,4 Z000", op_or_A_A, 1, { 4, 4 }, 0xB7 },
-	[0xB8] = { "CP A,B 1,4 Z1HC", NULL, 1, { 4, 4 }, 0xB8 },
-	[0xB9] = { "CP A,C 1,4 Z1HC", NULL, 1, { 4, 4 }, 0xB9 },
-	[0xBA] = { "CP A,D 1,4 Z1HC", NULL, 1, { 4, 4 }, 0xBA },
-	[0xBB] = { "CP A,E 1,4 Z1HC", NULL, 1, { 4, 4 }, 0xBB },
-	[0xBC] = { "CP A,H 1,4 Z1HC", NULL, 1, { 4, 4 }, 0xBC },
-	[0xBD] = { "CP A,L 1,4 Z1HC", NULL, 1, { 4, 4 }, 0xBD },
-	[0xBE] = { "CP A,[HL] 1,8 Z1HC", NULL, 1, { 8, 8 }, 0xBE },
-	[0xBF] = { "CP A,A 1,4 1100", NULL, 1, { 4, 4 }, 0xBF },
+	[0xB8] = { "CP A,B 1,4 Z1HC", op_cp_A_B, 1, { 4, 4 }, 0xB8 },
+	[0xB9] = { "CP A,C 1,4 Z1HC", op_cp_A_C, 1, { 4, 4 }, 0xB9 },
+	[0xBA] = { "CP A,D 1,4 Z1HC", op_cp_A_D, 1, { 4, 4 }, 0xBA },
+	[0xBB] = { "CP A,E 1,4 Z1HC", op_cp_A_E, 1, { 4, 4 }, 0xBB },
+	[0xBC] = { "CP A,H 1,4 Z1HC", op_cp_A_H, 1, { 4, 4 }, 0xBC },
+	[0xBD] = { "CP A,L 1,4 Z1HC", op_cp_A_L, 1, { 4, 4 }, 0xBD },
+	[0xBE] = { "CP A,[HL] 1,8 Z1HC", op_cp_A_$HL, 1, { 8, 8 }, 0xBE },
+	[0xBF] = { "CP A,A 1,4 1100", op_cp_A_L, 1, { 4, 4 }, 0xBF },
 	[0xC0] = { "RET NZ 1,20/8", op_ret_NZ, 1, { 20, 8 }, 0xC0 },
 	[0xC1] = { "POP BC 1,12", op_pop_BC, 1, { 12, 12 }, 0xC1 },
 	[0xC2] = { "JP NZ,a16 3,16/12", op_jp_NZ_a16, 3, { 16, 12 }, 0xC2 },
 	[0xC3] = { "JP a16 3,16", op_jp_a16, 3, { 16, 16 }, 0xC3 },
 	[0xC4] = { "CALL NZ,a16 3,24/12", op_call_NZ_a16, 3, { 24, 12 }, 0xC4 },
 	[0xC5] = { "PUSH BC 1,16", op_push_BC, 1, { 16, 16 }, 0xC5 },
-	[0xC6] = { "ADD A,n8 2,8 Z0HC", NULL, 2, { 8, 8 }, 0xC6 },
+	[0xC6] = { "ADD A,n8 2,8 Z0HC", op_add_A_n8, 2, { 8, 8 }, 0xC6 },
 	[0xC7] = { "RST $00 1,16", op_rst_$00, 1, { 16, 16 }, 0xC7 },
 	[0xC8] = { "RET Z 1,20/8", op_ret_Z, 1, { 20, 8 }, 0xC8 },
 	[0xC9] = { "RET 1,16", op_ret, 1, { 16, 16 }, 0xC9 },
@@ -1839,7 +2087,7 @@ struct instr optbl[256] = {
 	[0xCB] = { "PREFIX 1,4", NULL, 1, { 4, 4 }, 0xCB },
 	[0xCC] = { "CALL Z,a16 3,24/12", op_call_Z_a16, 3, { 24, 12 }, 0xCC },
 	[0xCD] = { "CALL a16 3,24", op_call_a16, 3, { 24, 24 }, 0xCD },
-	[0xCE] = { "ADC A,n8 2,8 Z0HC", NULL, 2, { 8, 8 }, 0xCE },
+	[0xCE] = { "ADC A,n8 2,8 Z0HC", op_adc_A_n8, 2, { 8, 8 }, 0xCE },
 	[0xCF] = { "RST $08 1,16", op_rst_$08, 1, { 16, 16 }, 0xCF },
 	[0xD0] = { "RET NC 1,20/8", op_ret_NC, 1, { 20, 8 }, 0xD0 },
 	[0xD1] = { "POP DE 1,12", op_pop_DE, 1, { 12, 12 }, 0xD1 },
@@ -1847,7 +2095,7 @@ struct instr optbl[256] = {
 	[0xD3] = { "ILLEGAL_D3 1,4", op_noop, 1, { 4, 4 }, 0xD3 },
 	[0xD4] = { "CALL NC,a16 3,24/12", op_call_NC_a16, 3, { 24, 12 }, 0xD4 },
 	[0xD5] = { "PUSH DE 1,16", op_push_DE, 1, { 16, 16 }, 0xD5 },
-	[0xD6] = { "SUB A,n8 2,8 Z1HC", NULL, 2, { 8, 8 }, 0xD6 },
+	[0xD6] = { "SUB A,n8 2,8 Z1HC", op_sub_A_n8, 2, { 8, 8 }, 0xD6 },
 	[0xD7] = { "RST $10 1,16", op_rst_$10, 1, { 16, 16 }, 0xD7 },
 	[0xD8] = { "RET C 1,20/8", op_ret_C, 1, { 20, 8 }, 0xD8 },
 	[0xD9] = { "RETI 1,16", op_reti, 1, { 16, 16 }, 0xD9 },
@@ -1855,7 +2103,7 @@ struct instr optbl[256] = {
 	[0xDB] = { "ILLEGAL_DB 1,4", op_noop, 1, { 4, 4 }, 0xDB },
 	[0xDC] = { "CALL C,a16 3,24/12", op_call_C_a16, 3, { 24, 12 }, 0xDC },
 	[0xDD] = { "ILLEGAL_DD 1,4", op_noop, 1, { 4, 4 }, 0xDD },
-	[0xDE] = { "SBC A,n8 2,8 Z1HC", NULL, 2, { 8, 8 }, 0xDE },
+	[0xDE] = { "SBC A,n8 2,8 Z1HC", op_sbc_A_n8, 2, { 8, 8 }, 0xDE },
 	[0xDF] = { "RST $18 1,16", op_rst_$18, 1, { 16, 16 }, 0xDF },
 	[0xE0] = { "LDH [a8],A 2,12", op_ldh_$a8_A, 2, { 12, 12 }, 0xE0 },
 	[0xE1] = { "POP HL 1,12", op_pop_HL, 1, { 12, 12 }, 0xE1 },
@@ -1865,7 +2113,7 @@ struct instr optbl[256] = {
 	[0xE5] = { "PUSH HL 1,16", op_push_HL, 1, { 16, 16 }, 0xE5 },
 	[0xE6] = { "AND A,n8 2,8 Z010", op_and_A_n8, 2, { 8, 8 }, 0xE6 },
 	[0xE7] = { "RST $20 1,16", op_rst_$20, 1, { 16, 16 }, 0xE7 },
-	[0xE8] = { "ADD SP,e8 2,16 00HC", NULL, 2, { 16, 16 }, 0xE8 },
+	[0xE8] = { "ADD SP,e8 2,16 00HC", op_add_SP_e8, 2, { 16, 16 }, 0xE8 },
 	[0xE9] = { "JP HL 1,4", op_jp_HL, 1, { 4, 4 }, 0xE9 },
 	[0xEA] = { "LD [a16],A 3,16", op_ld_$a16_A, 3, { 16, 16 }, 0xEA },
 	[0xEB] = { "ILLEGAL_EB 1,4", op_noop, 1, { 4, 4 }, 0xEB },
@@ -1881,8 +2129,12 @@ struct instr optbl[256] = {
 	[0xF5] = { "PUSH AF 1,16", op_push_AF, 1, { 16, 16 }, 0xF5 },
 	[0xF6] = { "OR A,n8 2,8 Z000", op_or_A_n8, 2, { 8, 8 }, 0xF6 },
 	[0xF7] = { "RST $30 1,16", op_rst_$30, 1, { 16, 16 }, 0xF7 },
-	[0xF8] = { "LD HL,SP,e8 2,12 00HC", NULL, 2, { 12, 12 }, 0xF8 },
-	[0xF9] = { "LD SP,HL 1,8", NULL, 1, { 8, 8 }, 0xF9 },
+	[0xF8] = { "LD HL,SP,e8 2,12 00HC",
+		   op_ld_HL_SP_e8,
+		   2,
+		   { 12, 12 },
+		   0xF8 },
+	[0xF9] = { "LD SP,HL 1,8", op_ld_SP_HL, 1, { 8, 8 }, 0xF9 },
 	[0xFA] = { "LD A,[a16] 3,16", op_ld_A_$a16, 3, { 16, 16 }, 0xFA },
 	[0xFB] = { "EI 1,4", op_ei, 1, { 4, 4 }, 0xFB },
 	[0xFC] = { "ILLEGAL_FC 1,4", op_noop, 1, { 4, 4 }, 0xFC },
