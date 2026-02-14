@@ -86,7 +86,7 @@ static inline uint8_t sub8(GameBoy *gb, uint8_t a, uint8_t b, uint8_t carry)
 	gb->cpu.fH = ((a & 0x0F) < (sub & 0x0F));
 	gb->cpu.fC = (a < sub);
 
-	fprintf(stderr, "0x%02x - 0x%04x = %02x f=%08b ", a, b, result,
+	fprintf(stderr, "0x%02x - 0x%04x = %02x f=%08b ", a, diff, result,
 		gb->cpu.f);
 	return result;
 }
@@ -178,7 +178,9 @@ uint8_t op_ld_a16_SP(struct GameBoy *gb) //0x08
 {
 	uint16_t a16 = bus_read(gb, gb->cpu.pc++);
 	a16 |= (bus_read(gb, gb->cpu.pc++) << 8);
-	gb->cpu.a = bus_read(gb, gb->cpu.bc);
+
+	bus_write(gb, a16, gb->cpu.sp & 0xFF);
+	bus_write(gb, a16 + 1, gb->cpu.sp >> 8);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -480,11 +482,11 @@ uint8_t op_scf(struct GameBoy *gb) //0x37
 	return gb->cpu.instr->dots[0];
 }
 
-uint8_t op_ccf(struct GameBoy *gb) //0x37
+uint8_t op_ccf(struct GameBoy *gb) //0x3F
 {
 	gb->cpu.fN = 0;
 	gb->cpu.fH = 0;
-	gb->cpu.fC = ~gb->cpu.fC;
+	gb->cpu.fC ^= 1;
 
 	return gb->cpu.instr->dots[0];
 }
@@ -1070,49 +1072,49 @@ uint8_t op_sub_A_A(struct GameBoy *gb) //0x97
 
 uint8_t op_sbc_A_B(struct GameBoy *gb) //0x98
 {
-	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.b, 1);
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.b, gb->cpu.fC);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_sbc_A_C(struct GameBoy *gb) //0x99
 {
-	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.c, 1);
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.c, gb->cpu.fC);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_sbc_A_D(struct GameBoy *gb) //0x9A
 {
-	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.d, 1);
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.d, gb->cpu.fC);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_sbc_A_E(struct GameBoy *gb) //0x9B
 {
-	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.e, 1);
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.e, gb->cpu.fC);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_sbc_A_H(struct GameBoy *gb) //0x9C
 {
-	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.h, 1);
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.h, gb->cpu.fC);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_sbc_A_L(struct GameBoy *gb) //0x9D
 {
-	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.l, 1);
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.l, gb->cpu.fC);
 	return gb->cpu.instr->dots[0];
 }
 
 uint8_t op_sbc_A_$HL(struct GameBoy *gb) //0x9E
 {
 	uint8_t $hl = bus_read(gb, gb->cpu.hl);
-	gb->cpu.a = sub8(gb, gb->cpu.a, $hl, 1);
+	gb->cpu.a = sub8(gb, gb->cpu.a, $hl, gb->cpu.fC);
 	return gb->cpu.instr->dots[0];
 }
 uint8_t op_sbc_A_A(struct GameBoy *gb) //0x9F
 {
-	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.a, 1);
+	gb->cpu.a = sub8(gb, gb->cpu.a, gb->cpu.a, gb->cpu.fC);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -1439,7 +1441,7 @@ uint8_t op_call_a16(struct GameBoy *gb) //0xCD
 uint8_t op_adc_A_n8(struct GameBoy *gb) //0xCE
 {
 	uint8_t n8 = bus_read(gb, gb->cpu.pc++);
-	gb->cpu.a = add8(gb, gb->cpu.a, n8, 1);
+	gb->cpu.a = add8(gb, gb->cpu.a, n8, gb->cpu.fC);
 	return gb->cpu.instr->dots[0];
 }
 
@@ -1720,7 +1722,6 @@ uint8_t op_ld_HL_SP_e8(struct GameBoy *gb) //0xF8
 
 uint8_t op_ld_SP_HL(struct GameBoy *gb) //0xF9
 {
-	uint8_t e8 = bus_read(gb, gb->cpu.pc++);
 	gb->cpu.sp = gb->cpu.hl;
 	return gb->cpu.instr->dots[0];
 }
@@ -2072,7 +2073,7 @@ struct instr optbl[256] = {
 	[0xBC] = { "CP A,H 1,4 Z1HC", op_cp_A_H, 1, { 4, 4 }, 0xBC },
 	[0xBD] = { "CP A,L 1,4 Z1HC", op_cp_A_L, 1, { 4, 4 }, 0xBD },
 	[0xBE] = { "CP A,[HL] 1,8 Z1HC", op_cp_A_$HL, 1, { 8, 8 }, 0xBE },
-	[0xBF] = { "CP A,A 1,4 1100", op_cp_A_L, 1, { 4, 4 }, 0xBF },
+	[0xBF] = { "CP A,A 1,4 1100", op_cp_A_A, 1, { 4, 4 }, 0xBF },
 	[0xC0] = { "RET NZ 1,20/8", op_ret_NZ, 1, { 20, 8 }, 0xC0 },
 	[0xC1] = { "POP BC 1,12", op_pop_BC, 1, { 12, 12 }, 0xC1 },
 	[0xC2] = { "JP NZ,a16 3,16/12", op_jp_NZ_a16, 3, { 16, 12 }, 0xC2 },
