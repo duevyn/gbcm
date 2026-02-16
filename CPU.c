@@ -174,6 +174,18 @@ uint8_t op_ld_B_n8(struct GameBoy *gb) //0x06
 	return gb->cpu.instr->dots[0];
 }
 
+uint8_t op_rlca(struct GameBoy *gb) //0x07
+{
+	uint8_t carry = ((gb->cpu.a & 0x80) >> 7);
+	gb->cpu.a = ((gb->cpu.a << 1) | carry);
+
+	gb->cpu.fZ = 0;
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = carry;
+	return gb->cpu.instr->dots[0];
+}
+
 uint8_t op_ld_a16_SP(struct GameBoy *gb) //0x08
 {
 	uint16_t a16 = bus_read(gb, gb->cpu.pc++);
@@ -220,12 +232,26 @@ uint8_t op_ld_C_n8(struct GameBoy *gb) //0x0E
 	return gb->cpu.instr->dots[0];
 }
 
+uint8_t op_rrca(struct GameBoy *gb) //0x0F
+{
+	uint8_t carry = (gb->cpu.a & 1U);
+	gb->cpu.a = ((gb->cpu.a >> 1) | (carry << 7));
+
+	gb->cpu.fZ = 0;
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = carry;
+	return gb->cpu.instr->dots[0];
+}
+
 uint8_t op_stop(struct GameBoy *gb) //0x10
 {
 	// TODO: very tricky behavior:
 	// https://gbdev.io/pandocs/Reducing_Power_Consumption.html#using-the-stop-instruction
 
 	gb->cpu.pc++;
+	fprintf(stderr, "pc 0x%04x, ime 0x%02x, ie 0x%02x, if 0x%02x",
+		gb->cpu.pc, gb->cpu.ime, gb->ie, gb->if_reg);
 	gb->cpu.dblspd = !gb->cpu.dblspd;
 	return gb->cpu.instr->dots[0];
 }
@@ -264,6 +290,18 @@ uint8_t op_dec_D(struct GameBoy *gb) //0x15
 uint8_t op_ld_D_n8(struct GameBoy *gb) //0x16
 {
 	gb->cpu.d = bus_read(gb, gb->cpu.pc++);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_rla(struct GameBoy *gb) //0x17
+{
+	uint8_t carry = ((gb->cpu.a & 0x80) >> 7);
+	gb->cpu.a = ((gb->cpu.a << 1) | gb->cpu.fC);
+
+	gb->cpu.fZ = 0;
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = carry;
 	return gb->cpu.instr->dots[0];
 }
 
@@ -307,6 +345,18 @@ uint8_t op_dec_E(struct GameBoy *gb) //0x1D
 uint8_t op_ld_E_n8(struct GameBoy *gb) //0x1E
 {
 	gb->cpu.e = bus_read(gb, gb->cpu.pc++);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_rra(struct GameBoy *gb) //0x1F
+{
+	uint8_t carry = (gb->cpu.a & 1U);
+	gb->cpu.a = ((gb->cpu.a >> 1) | (gb->cpu.fC << 7));
+
+	gb->cpu.fZ = 0;
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = carry;
 	return gb->cpu.instr->dots[0];
 }
 
@@ -1762,125 +1812,6 @@ uint8_t op_rst_$38(struct GameBoy *gb) //0xff
 	return gb->cpu.instr->dots[0];
 }
 
-// Start cb
-// ===========================================================================
-// ===========================================================================
-// ===========================================================================
-
-static inline void set_u3_$HL(struct GameBoy *gb, uint8_t n)
-{
-	uint8_t $hl = bus_read(gb, gb->cpu.hl);
-	fprintf(stderr, "hl 0x%04b [ 0x%02x] ", gb->cpu.hl, $hl);
-	bus_write(gb, gb->cpu.hl, $hl | (1U << n));
-	fprintf(stderr, "0x%02x ", bus_read(gb, gb->cpu.hl));
-}
-
-static inline void bit_u3_$HL(struct GameBoy *gb, uint8_t n)
-{
-	fprintf(stderr, "f 0x%02x ", gb->cpu.f);
-	uint8_t $hl = bus_read(gb, gb->cpu.hl);
-	gb->cpu.fZ = !($hl & (1 << n));
-	gb->cpu.fN = 0;
-	gb->cpu.fH = 1;
-	fprintf(stderr, "[HL] 0b%08b f 0x%02x", $hl, gb->cpu.f);
-}
-
-uint8_t cb_bit_0_$HL(struct GameBoy *gb) //0x46
-{
-	bit_u3_$HL(gb, 0);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_bit_1_$HL(struct GameBoy *gb) //0x4e
-{
-	bit_u3_$HL(gb, 1);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_bit_2_$HL(struct GameBoy *gb) //0x56
-{
-	bit_u3_$HL(gb, 2);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_bit_3_$HL(struct GameBoy *gb) //0x5e
-{
-	bit_u3_$HL(gb, 3);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_bit_4_$HL(struct GameBoy *gb) //0x66
-{
-	bit_u3_$HL(gb, 4);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_bit_5_$HL(struct GameBoy *gb) //0x6e
-{
-	bit_u3_$HL(gb, 5);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_bit_6_$HL(struct GameBoy *gb) //0x76
-{
-	bit_u3_$HL(gb, 6);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_bit_7_$HL(struct GameBoy *gb) //0x7e
-{
-	bit_u3_$HL(gb, 7);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_set_0_$HL(struct GameBoy *gb) //0xc6
-{
-	set_u3_$HL(gb, 0);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_set_1_$HL(struct GameBoy *gb) //0xce
-{
-	set_u3_$HL(gb, 1);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_set_2_$HL(struct GameBoy *gb) //0xd6
-{
-	set_u3_$HL(gb, 2);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_set_3_$HL(struct GameBoy *gb) //0xde
-{
-	set_u3_$HL(gb, 3);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_set_4_$HL(struct GameBoy *gb) //0xe6
-{
-	set_u3_$HL(gb, 4);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_set_5_$HL(struct GameBoy *gb) //0xee
-{
-	set_u3_$HL(gb, 5);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_set_6_$HL(struct GameBoy *gb) //0xf6
-{
-	set_u3_$HL(gb, 6);
-	return gb->cpu.instr->dots[0];
-}
-
-uint8_t cb_set_7_$HL(struct GameBoy *gb) //0xfe
-{
-	set_u3_$HL(gb, 7);
-	return gb->cpu.instr->dots[0];
-}
-
 struct instr optbl[256] = {
 	[0x00] = { "NOP 1,4", op_noop, 1, { 4, 4 }, 0x00 },
 	[0x01] = { "LD BC,n16 3,12", op_ld_BC_n16, 3, { 12, 12 }, 0x01 },
@@ -1889,7 +1820,7 @@ struct instr optbl[256] = {
 	[0x04] = { "INC B 1,4 Z0H-", op_inc_B, 1, { 4, 4 }, 0x04 },
 	[0x05] = { "DEC B 1,4 Z1H-", op_dec_B, 1, { 4, 4 }, 0x05 },
 	[0x06] = { "LD B,n8 2,8", op_ld_B_n8, 2, { 8, 8 }, 0x06 },
-	[0x07] = { "RLCA 1,4 000C", NULL, 1, { 4, 4 }, 0x07 },
+	[0x07] = { "RLCA 1,4 000C", op_rlca, 1, { 4, 4 }, 0x07 },
 	[0x08] = { "LD [a16],SP 3,20", op_ld_a16_SP, 3, { 20, 20 }, 0x08 },
 	[0x09] = { "ADD HL,BC 1,8 -0HC", op_add_HL_BC, 1, { 8, 8 }, 0x09 },
 	[0x0A] = { "LD A,[BC] 1,8", op_ld_A_$BC, 1, { 8, 8 }, 0x0A },
@@ -1897,7 +1828,7 @@ struct instr optbl[256] = {
 	[0x0C] = { "INC C 1,4 Z0H-", op_inc_C, 1, { 4, 4 }, 0x0C },
 	[0x0D] = { "DEC C 1,4 Z1H-", op_dec_C, 1, { 4, 4 }, 0x0D },
 	[0x0E] = { "LD C,n8 2,8", op_ld_C_n8, 2, { 8, 8 }, 0x0E },
-	[0x0F] = { "RRCA 1,4 000C", NULL, 1, { 4, 4 }, 0x0F },
+	[0x0F] = { "RRCA 1,4 000C", op_rrca, 1, { 4, 4 }, 0x0F },
 	[0x10] = { "STOP n8 2,4", op_stop, 2, { 4, 4 }, 0x10 },
 	[0x11] = { "LD DE,n16 3,12", op_ld_DE_n16, 3, { 12, 12 }, 0x11 },
 	[0x12] = { "LD [DE],A 1,8", op_ld_$DE_A, 1, { 8, 8 }, 0x12 },
@@ -1905,7 +1836,7 @@ struct instr optbl[256] = {
 	[0x14] = { "INC D 1,4 Z0H-", op_inc_D, 1, { 4, 4 }, 0x14 },
 	[0x15] = { "DEC D 1,4 Z1H-", op_dec_D, 1, { 4, 4 }, 0x15 },
 	[0x16] = { "LD D,n8 2,8", op_ld_D_n8, 2, { 8, 8 }, 0x16 },
-	[0x17] = { "RLA 1,4 000C", NULL, 1, { 4, 4 }, 0x17 },
+	[0x17] = { "RLA 1,4 000C", op_rla, 1, { 4, 4 }, 0x17 },
 	[0x18] = { "JR e8 2,12", op_jr_e8, 2, { 12, 12 }, 0x18 },
 	[0x19] = { "ADD HL,DE 1,8 -0HC", op_add_HL_DE, 1, { 8, 8 }, 0x19 },
 	[0x1A] = { "LD A,[DE] 1,8", op_ld_A_$DE, 1, { 8, 8 }, 0x1A },
@@ -1913,7 +1844,7 @@ struct instr optbl[256] = {
 	[0x1C] = { "INC E 1,4 Z0H-", op_inc_E, 1, { 4, 4 }, 0x1C },
 	[0x1D] = { "DEC E 1,4 Z1H-", op_dec_E, 1, { 4, 4 }, 0x1D },
 	[0x1E] = { "LD E,n8 2,8", op_ld_E_n8, 2, { 8, 8 }, 0x1E },
-	[0x1F] = { "RRA 1,4 000C", NULL, 1, { 4, 4 }, 0x1F },
+	[0x1F] = { "RRA 1,4 000C", op_rra, 1, { 4, 4 }, 0x1F },
 	[0x20] = { "JR NZ,e8 2,12/8", op_jr_NZ_e8, 2, { 12, 8 }, 0x20 },
 	[0x21] = { "LD HL,n16 3,12", op_ld_HL_n16, 3, { 12, 12 }, 0x21 },
 	[0x22] = { "LD [HLI],A 1,8", op_ld_$HLI_A, 1, { 8, 8 }, 0x22 },
@@ -2117,9 +2048,9 @@ struct instr optbl[256] = {
 	[0xE8] = { "ADD SP,e8 2,16 00HC", op_add_SP_e8, 2, { 16, 16 }, 0xE8 },
 	[0xE9] = { "JP HL 1,4", op_jp_HL, 1, { 4, 4 }, 0xE9 },
 	[0xEA] = { "LD [a16],A 3,16", op_ld_$a16_A, 3, { 16, 16 }, 0xEA },
-	[0xEB] = { "ILLEGAL_EB 1,4", op_noop, 1, { 4, 4 }, 0xEB },
-	[0xEC] = { "ILLEGAL_EC 1,4", op_noop, 1, { 4, 4 }, 0xEC },
-	[0xED] = { "ILLEGAL_ED 1,4", op_noop, 1, { 4, 4 }, 0xED },
+	[0xEB] = { "ILLEGAL_EB 1,4", NULL, 1, { 4, 4 }, 0xEB },
+	[0xEC] = { "ILLEGAL_EC 1,4", NULL, 1, { 4, 4 }, 0xEC },
+	[0xED] = { "ILLEGAL_ED 1,4", NULL, 1, { 4, 4 }, 0xED },
 	[0xEE] = { "XOR A,n8 2,8 Z000", op_xor_A_n8, 2, { 8, 8 }, 0xEE },
 	[0xEF] = { "RST $28 1,16", op_rst_$28, 1, { 16, 16 }, 0xEF },
 	[0xF0] = { "LDH A,[a8] 2,12", op_ldh_A_$a8, 2, { 12, 12 }, 0xF0 },
@@ -2138,8 +2069,8 @@ struct instr optbl[256] = {
 	[0xF9] = { "LD SP,HL 1,8", op_ld_SP_HL, 1, { 8, 8 }, 0xF9 },
 	[0xFA] = { "LD A,[a16] 3,16", op_ld_A_$a16, 3, { 16, 16 }, 0xFA },
 	[0xFB] = { "EI 1,4", op_ei, 1, { 4, 4 }, 0xFB },
-	[0xFC] = { "ILLEGAL_FC 1,4", op_noop, 1, { 4, 4 }, 0xFC },
-	[0xFD] = { "ILLEGAL_FD 1,4", op_noop, 1, { 4, 4 }, 0xFD },
+	[0xFC] = { "ILLEGAL_FC 1,4", NULL, 1, { 4, 4 }, 0xFC },
+	[0xFD] = { "ILLEGAL_FD 1,4", NULL, 1, { 4, 4 }, 0xFD },
 	[0xFE] = { "CP A,n8 2,8 Z1HC", op_cp_A_n8, 2, { 8, 8 }, 0xFE },
 	[0xFF] = { "RST $38 1,16", op_rst_$38, 1, { 16, 16 }, 0xFF },
 };
@@ -2147,75 +2078,110 @@ struct instr optbl[256] = {
 uint8_t rlc(struct GameBoy *gb, uint8_t n)
 {
 	fprintf(stderr, "RLC %s ", rgstr[gb->cpu.op & 7]);
-	fprintf(stderr, "NOT IMPLEMENTED \n");
-	exit(1);
-	return 0;
+	uint8_t carry = ((n & 0x80) >> 7);
+	n = ((n << 1) | carry);
+
+	gb->cpu.fZ = (n == 0);
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = carry;
+	return n;
 }
 
 uint8_t rrc(struct GameBoy *gb, uint8_t n)
 {
 	fprintf(stderr, "RRC %s ", rgstr[gb->cpu.op & 7]);
-	fprintf(stderr, "NOT IMPLEMENTED \n");
-	exit(1);
-	return 0;
+	uint8_t carry = (n & 1U);
+	n = ((n >> 1U) | (carry << 7U));
+
+	gb->cpu.fZ = (n == 0);
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = carry;
+	return n;
 }
 
 uint8_t rl(struct GameBoy *gb, uint8_t n)
 {
 	fprintf(stderr, "RL %s ", rgstr[gb->cpu.op & 7]);
-	fprintf(stderr, "NOT IMPLEMENTED \n");
-	exit(1);
-	return 0;
+	uint8_t carry = ((n & 0x80) >> 7);
+	n = ((n << 1) | gb->cpu.fC);
+
+	gb->cpu.fZ = (n == 0);
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = carry;
+	return n;
 }
 
 uint8_t rr(struct GameBoy *gb, uint8_t n)
 {
 	fprintf(stderr, "RR %s ", rgstr[gb->cpu.op & 7]);
-	fprintf(stderr, "NOT IMPLEMENTED \n");
-	exit(1);
-	return 0;
+	uint8_t carry = (n & 1U);
+	n = ((n >> 1U) | (gb->cpu.fC << 7U));
+
+	gb->cpu.fZ = (n == 0);
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = carry;
+	return n;
 }
 
 uint8_t sla(struct GameBoy *gb, uint8_t n)
 {
 	fprintf(stderr, "SLA %s ", rgstr[gb->cpu.op & 7]);
-	fprintf(stderr, "NOT IMPLEMENTED \n");
-	exit(1);
-	return 0;
+	uint8_t carry = ((n & 0x80) >> 7U);
+	n <<= 1U;
+
+	gb->cpu.fZ = (n == 0);
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = carry;
+	return n;
 }
 
 uint8_t sra(struct GameBoy *gb, uint8_t n)
 {
 	fprintf(stderr, "SRA %s ", rgstr[gb->cpu.op & 7]);
-	fprintf(stderr, "NOT IMPLEMENTED \n");
-	exit(1);
-	return 0;
+	uint8_t carry = (n & 1U);
+	uint8_t sign = (n & 0x80);
+	n = (sign | (n >> 1U));
+
+	gb->cpu.fZ = (n == 0);
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = carry;
+	return n;
 }
 
 uint8_t swap(struct GameBoy *gb, uint8_t n)
 {
 	fprintf(stderr, "SWAP %s ", rgstr[gb->cpu.op & 7]);
-	uint8_t result = ((n >> 4) | (n << 4));
+	n = ((n >> 4) | (n << 4));
 
-	gb->cpu.fZ = result == 0;
+	gb->cpu.fZ = (n == 0);
 	gb->cpu.fN = 0;
 	gb->cpu.fH = 0;
 	gb->cpu.fC = 0;
 
-	return result;
+	return n;
 }
 
 uint8_t srl(struct GameBoy *gb, uint8_t n)
 {
-	fprintf(stderr, "SRL %s ", rgstr[gb->cpu.op & 7]);
-	fprintf(stderr, "NOT IMPLEMENTED \n");
-	exit(1);
-	return 0;
+	uint8_t carry = (n & 1U);
+	n >>= 1U;
+
+	gb->cpu.fZ = (n == 0);
+	gb->cpu.fN = 0;
+	gb->cpu.fH = 0;
+	gb->cpu.fC = carry;
+	return n;
 }
 
-uint8_t (*const cb_grp_0_fns[])(struct GameBoy *gb,
-				uint8_t n) = { rlc, rrc, rl,   rr,
-					       sla, sra, swap, srl };
+uint8_t (*cb_grp_0_fns[])(struct GameBoy *gb, uint8_t n) = {
+	rlc, rrc, rl, rr, sla, sra, swap, srl
+};
 
 uint8_t cb_exec(struct GameBoy *gb)
 {
@@ -2226,12 +2192,8 @@ uint8_t cb_exec(struct GameBoy *gb)
 	uint8_t *rgptr = gb->cpu.rg[op & 7];
 
 	uint8_t val, tmp;
-	if (rgptr) {
-		val = *rgptr;
-	} else {
-		val = bus_read(gb, gb->cpu.hl);
-		dots += 4;
-	}
+
+	val = rgptr ? *rgptr : bus_read(gb, gb->cpu.hl);
 
 	fprintf(stderr, "**** ");
 	switch (group) {
@@ -2242,37 +2204,43 @@ uint8_t cb_exec(struct GameBoy *gb)
 			*rgptr = val;
 		} else {
 			bus_write(gb, gb->cpu.hl, val);
-			dots += 4;
+			dots = 16;
 		}
 		fprintf(stderr, "2,%d %08b -> %08b ", dots, tmp, val);
 		break;
 	case (1): // bit
-		fprintf(stderr, "BIT %d,%s 2,%d ", n, rgstr[reg], dots);
-		fprintf(stderr, "NOT IMPLEMENTED \n");
-		exit(1);
+		tmp = gb->cpu.f;
+		gb->cpu.fZ = !(val & (1U << n));
+		gb->cpu.fN = 0;
+		gb->cpu.fH = 1;
+		if (!rgptr)
+			dots = 12;
+		fprintf(stderr, "BIT %d,%s 2,%d %08b -> %08b ", n, rgstr[reg],
+			dots, tmp, gb->cpu.f);
 		break;
 	case (2): //res
-		tmp = gb->cpu.a;
+		tmp = val;
 		val &= ~(1U << n);
 		if (rgptr) {
 			*rgptr = val;
 		} else {
 			bus_write(gb, gb->cpu.hl, val);
-			dots += 4;
+			dots = 16;
 		}
-		fprintf(stderr, "RES %d,%s 2,%d %b -> %b %b", n, rgstr[reg],
-			dots, tmp, val, gb->cpu.a);
+		fprintf(stderr, "RES %d,%s 2,%d %b -> %b ", n, rgstr[reg], dots,
+			tmp, val);
 		break;
 	case (3): //set
+		tmp = val;
+		val |= (1U << n);
 		if (rgptr) {
 			*rgptr = val;
 		} else {
 			bus_write(gb, gb->cpu.hl, val);
-			dots += 4;
+			dots = 16;
 		}
-		fprintf(stderr, "SET %d,%s 2,%d ", n, rgstr[reg], dots);
-		fprintf(stderr, "NOT IMPLEMENTED \n");
-		exit(1);
+		fprintf(stderr, "SET %d,%s 2,%d %08b -> %08b", n, rgstr[reg],
+			dots, tmp, val);
 		break;
 	default:
 		fprintf(stderr, "\nERROR: INVALID CB OP\n");
@@ -2290,7 +2258,7 @@ void cpu_fetch(struct GameBoy *gb)
 	gb->cpu.op = bus_read(gb, gb->cpu.pc++);
 	gb->cpu.repeat = prev == gb->cpu.op ? gb->cpu.repeat + 1 : 0;
 
-	if (gb->cpu.repeat == 10) {
+	if (gb->cpu.repeat == 20) {
 		fprintf(stderr, "\n");
 		exit(1);
 	}
