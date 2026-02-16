@@ -56,7 +56,10 @@ typedef struct CPU {
 	uint16_t pc, sp;
 	bool ime, dblspd, prefix, halted;
 	int ime_delay;
+
+	//debug values
 	uint64_t cnt, dcnt;
+	uint8_t repeat;
 
 } CPU;
 

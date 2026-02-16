@@ -2286,7 +2286,14 @@ struct instr cb_instr = { "", cb_exec, 2, { 8, 8 }, 0 };
 
 void cpu_fetch(struct GameBoy *gb)
 {
+	uint8_t prev = gb->cpu.op;
 	gb->cpu.op = bus_read(gb, gb->cpu.pc++);
+	gb->cpu.repeat = prev == gb->cpu.op ? gb->cpu.repeat + 1 : 0;
+
+	if (gb->cpu.repeat == 10) {
+		fprintf(stderr, "\n");
+		exit(1);
+	}
 	if (gb->cpu.op == 0xcb) {
 		gb->cpu.op = bus_read(gb, gb->cpu.pc++);
 		gb->cpu.instr = &cb_instr;

@@ -69,7 +69,7 @@ int main(int argc, char *argv[])
 {
 	//cpu_ldrom(&cpu, argv[1]);
 	fprintf(stderr, "MS per frame %06f ms\n\n", NS_PER_FRAME / 1000000.0f);
-	struct GameBoy gb;
+	struct GameBoy gb = { 0 };
 	gb_loadrom(&gb, argv[1]);
 	init_sdl();
 	int running = 1;

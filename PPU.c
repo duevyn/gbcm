@@ -22,13 +22,20 @@ void check_lyc_eq_ly(struct PPU *ppu)
 		fprintf(stderr, "---- ALERT: LY == LYC ");
 }
 
-void request_interrupt()
+void request_interrupt(struct GameBoy *gb, uint8_t bit)
 {
-	fprintf(stderr, "----  ALERT: REQUEST INTERUPPT ");
+	gb->if_reg |= (1U << bit);
+	fprintf(stderr,
+		"----  ALERT: REQUEST INTERUPPT ime= %b ie=0x%02x, if=0x%02x lcdc=0x%02x ",
+		gb->cpu.ime, gb->ie, gb->if_reg, gb->ppu.lcdc);
 }
 
 void ppu_step(struct GameBoy *gb, int dots)
 {
+	if ((gb->ppu.lcdc & 0x80) == 0) {
+		fprintf(stderr, "    ##### PPU OFF\n");
+		return;
+	}
 	gb->ppu.ly_dots += dots;
 	const char *prv_mode = ModeNames[gb->ppu.mode];
 	switch (gb->ppu.mode) {
@@ -67,7 +74,7 @@ void ppu_step(struct GameBoy *gb, int dots)
 				update_stat();
 			} else {
 				gb->ppu.mode = VBLNK;
-				request_interrupt();
+				request_interrupt(gb, 0);
 			}
 		}
 		break;

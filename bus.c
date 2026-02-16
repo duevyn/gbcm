@@ -125,6 +125,7 @@ uint8_t bus_read(struct GameBoy *gb, uint16_t addr)
 
 void io_write(struct GameBoy *gb, uint16_t addr, uint8_t data)
 {
+	uint8_t prev_on, cur_on;
 	switch (addr) {
 	case 0xFF01:
 		gb->sb = data;
@@ -140,8 +141,16 @@ void io_write(struct GameBoy *gb, uint16_t addr, uint8_t data)
 		fprintf(stderr, "  WR @io IF 0x%04x 0x%02x ", addr, data);
 		break;
 	case 0xFF40:
-		gb->ppu.lcdc = data;
+		prev_on = (gb->ppu.lcdc & 0x80);
+		cur_on = (data & 0x80);
 		fprintf(stderr, "  WR @io LCDC 0x%04x 0x%02x ", addr, data);
+		if (!prev_on && (prev_on ^ cur_on)) { //off to on
+			fprintf(stderr, "ALERT: PPU switch on ");
+			gb->ppu.mode = OAM;
+			gb->ppu.ly = 0;
+			gb->ppu.ly_dots = 0;
+		}
+		gb->ppu.lcdc = data;
 		break;
 	case 0xFF41:
 		gb->ppu.stat = data;
@@ -202,7 +211,7 @@ void bus_write(struct GameBoy *gb, uint16_t addr, uint8_t data)
 	}
 
 	if (addr >= 0x8000 && addr < 0xA000) { //vram
-		if (gb->ppu.mode == DRAW) {
+		if ((gb->ppu.lcdc & 0x80) && (gb->ppu.mode == DRAW)) {
 			fprintf(stderr,
 				"ALERT: Cannot write to VRAM. PPU in mode %d ",
 				gb->ppu.mode);
@@ -227,7 +236,8 @@ void bus_write(struct GameBoy *gb, uint16_t addr, uint8_t data)
 	}
 	if (addr >= 0xFE00 && addr <= 0xFE9F) { //oam
 		//oam
-		if (gb->ppu.mode == OAM || gb->ppu.mode == DRAW) {
+		if ((gb->ppu.lcdc & 0x80) &&
+		    ((gb->ppu.mode == OAM) || (gb->ppu.mode == DRAW))) {
 			//dma access allowed
 			fprintf(stderr, "Cannot write to OAM. PPU in mode %d\n",
 				gb->ppu.mode);

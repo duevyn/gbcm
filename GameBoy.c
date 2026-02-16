@@ -1,8 +1,36 @@
 #include "GameBoy.h"
+#include "bus.h"
+#include "registers.h"
 #include <stdio.h>
 
-void hndl_interrupts()
+uint8_t hndl_interrupts(struct GameBoy *gb)
 {
+	bool pending = gb->if_reg & gb->ie;
+	if (!pending || !gb->cpu.ime)
+		return 0;
+
+	gb->cpu.halted = 0;
+	gb->cpu.ime = 0;
+
+	uint8_t bit = __builtin_ctz(pending);
+	gb->if_reg &= ~(1 << bit);
+
+	bus_write(gb, --gb->cpu.sp, gb->cpu.pc >> 8);
+	bus_write(gb, --gb->cpu.sp, gb->cpu.pc & 0xFF);
+
+	static const uint16_t vectors[5] = {
+		0x40, // VBlank
+		0x48, // STAT
+		0x50, // Timer
+		0x58, // Serial
+		0x60 // Joypad
+	};
+
+	gb->cpu.pc = vectors[bit];
+	gb->cpu.instr = NULL;
+	fprintf(stderr, "$$$$$$$$$$ interrupt. jump to 0x%04x\n", gb->cpu.pc);
+
+	return 20; //5 M cycles
 }
 
 void initreg(struct GameBoy *gb)
@@ -88,15 +116,22 @@ void initreg_cgb(struct CPU *cpu)
 }
 void gb_emulate(struct GameBoy *gb)
 {
-	int ticks = 0, tot_ticks = 0;
+	int ticks = 0, tot_ticks = 0, itr_ticks = 0;
 
-	gb->ppu.mode = OAM;
-	gb->ppu.ly = 0;
+	fprintf(stderr,
+		"PPU: mode %d, ly %d, ly_dots %d, lydc %08b, stat %08b\n\n",
+		gb->ppu.mode, gb->ppu.ly, gb->ppu.ly_dots, gb->ppu.lcdc,
+		gb->ppu.stat);
 	do {
 		ticks = cpu_step(gb);
 		ppu_step(gb, ticks);
-		hndl_interrupts();
-		tot_ticks += ticks;
+
+		if ((itr_ticks = hndl_interrupts(gb))) {
+			fprintf(stderr, "*** ALERT: PPU step for interrupt ");
+			ppu_step(gb, itr_ticks);
+		}
+
+		tot_ticks += ticks + itr_ticks;
 	} while (tot_ticks < DOTS_PER_FRAME);
 }
 
@@ -118,7 +153,7 @@ void gb_loadrom(struct GameBoy *gb, const char *path)
 
 	gb->cpu.ime = gb->cpu.dblspd = gb->cpu.prefix = false;
 	gb->cpu.ime_delay = 0;
-	gb->cpu.pc = 0x150; // assume valid rom. (gb->cpu.pc = 0x100)
+	gb->cpu.pc = 0x100;
 
 	gb->cpu.rg[0] = &gb->cpu.b;
 	gb->cpu.rg[1] = &gb->cpu.c;
