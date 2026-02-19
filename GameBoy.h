@@ -4,11 +4,13 @@
 #include "CPU.h"
 #include "PPU.h"
 #include "cartridge.h"
+#include "DMA.h"
 
 typedef struct GameBoy {
 	CPU cpu;
 	PPU ppu;
 	Cartridge crt;
+	DMA dma;
 
 	uint8_t wram[8192];
 	uint8_t hram[127];

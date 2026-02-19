@@ -1,19 +1,26 @@
 #include "GameBoy.h"
 #include "bus.h"
-#include "registers.h"
 #include <stdio.h>
 
+//#define fprintf(stderr, ...) ((void)0)
 uint8_t hndl_interrupts(struct GameBoy *gb)
 {
-	bool pending = gb->if_reg & gb->ie;
+	uint8_t pending = gb->if_reg & gb->ie;
 	if (!pending || !gb->cpu.ime)
 		return 0;
+
+	fprintf(stderr,
+		"\n\n\n\n\n$$$$$$$$$$ interrupt. ime %08b if %08b ie %08b stat %08b ",
+		gb->cpu.ime, gb->if_reg, gb->ie, gb->ppu.stat);
 
 	gb->cpu.halted = 0;
 	gb->cpu.ime = 0;
 
 	uint8_t bit = __builtin_ctz(pending);
 	gb->if_reg &= ~(1 << bit);
+
+	gb->cpu.pc--; // move back since next op already fetched
+	gb->cpu.instr = NULL;
 
 	bus_write(gb, --gb->cpu.sp, gb->cpu.pc >> 8);
 	bus_write(gb, --gb->cpu.sp, gb->cpu.pc & 0xFF);
@@ -27,8 +34,8 @@ uint8_t hndl_interrupts(struct GameBoy *gb)
 	};
 
 	gb->cpu.pc = vectors[bit];
-	gb->cpu.instr = NULL;
-	fprintf(stderr, "$$$$$$$$$$ interrupt. jump to 0x%04x\n", gb->cpu.pc);
+	fprintf(stderr, "-- Jump to 0x%04x (pending %b, bit %d, if %b)\n\n\n\n",
+		gb->cpu.pc, pending, bit, gb->if_reg);
 
 	return 20; //5 M cycles
 }
@@ -114,6 +121,7 @@ void initreg_cgb(struct CPU *cpu)
 	//gb->cpu.rom_data[RP] = 0x3e;
 	//gb->cpu.rom_data[SVBK] = 0xf8;
 }
+
 void gb_emulate(struct GameBoy *gb)
 {
 	int ticks = 0, tot_ticks = 0, itr_ticks = 0;
@@ -123,10 +131,19 @@ void gb_emulate(struct GameBoy *gb)
 		gb->ppu.mode, gb->ppu.ly, gb->ppu.ly_dots, gb->ppu.lcdc,
 		gb->ppu.stat);
 	do {
-		ticks = cpu_step(gb);
+		if (gb->cpu.stop) {
+			tot_ticks += 4;
+			continue;
+		}
+
+		if (!gb->dma.active)
+			ticks = cpu_step(gb);
+		else
+			ticks = dma_step(gb);
+
 		ppu_step(gb, ticks);
 
-		if ((itr_ticks = hndl_interrupts(gb))) {
+		if (!gb->dma.active && (itr_ticks = hndl_interrupts(gb))) {
 			fprintf(stderr, "*** ALERT: PPU step for interrupt ");
 			ppu_step(gb, itr_ticks);
 		}
@@ -139,7 +156,8 @@ void gb_loadrom(struct GameBoy *gb, const char *path)
 {
 	cart_load(&gb->crt, path);
 
-	gb->cpu.af = 0x11b0;
+	gb->cpu.af = 0x01b0;
+	//gb->cpu.af = 0x11b0;
 	gb->cpu.bc = 0x0013;
 	gb->cpu.de = 0x00d8;
 	gb->cpu.hl = 0x014d;
@@ -148,8 +166,8 @@ void gb_loadrom(struct GameBoy *gb, const char *path)
 	// pan doc values. assume these are correct but verify against values above
 	// after investigating. values above are dmg defaults.
 	gb->cpu.bc = 0x0013; //cgb dmgmode 0x0000
-	gb->cpu.de = 0xff56; //cgb dmg mode 0x0008
-	gb->cpu.hl = 0x000d; // cgb dmg ????
+	//gb->cpu.de = 0xff56; //cgb dmg mode 0x0008
+	//jgb->cpu.hl = 0x000d; // cgb dmg ????
 
 	gb->cpu.ime = gb->cpu.dblspd = gb->cpu.prefix = false;
 	gb->cpu.ime_delay = 0;

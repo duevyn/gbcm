@@ -1,5 +1,6 @@
 #include "bus.h"
 #include "GameBoy.h"
+#include "DMA.h"
 #include <stdio.h>
 
 //#define fprintf(stderr, ...) ((void)0)
@@ -40,6 +41,7 @@ uint8_t io_read(struct GameBoy *gb, uint16_t addr)
 	case 0xFF44:
 		data = gb->ppu.ly;
 		fprintf(stderr, "  RD @io LY 0x%04x 0x%02x", addr, data);
+		//return 0x90; // gameboy doctor
 		return data;
 	case 0xFF47:
 		data = gb->ppu.bgp;
@@ -80,7 +82,7 @@ uint8_t bus_read(struct GameBoy *gb, uint16_t addr)
 		return cart_read(&gb->crt, addr);
 	}
 	if (addr >= 0x8000 && addr < 0xA000) {
-		if (gb->ppu.mode == DRAW) {
+		if ((gb->ppu.lcdc & 0x80) && (gb->ppu.mode == DRAW)) {
 			fprintf(stderr, "Cannot read VRAM. PPU mode %d\n",
 				gb->ppu.mode);
 			return 0xFF;
@@ -95,6 +97,8 @@ uint8_t bus_read(struct GameBoy *gb, uint16_t addr)
 
 	if (addr >= 0xC000 && addr <= 0xDFFF) {
 		//wram
+		//fprintf(stderr, "rd @wram: 0x%04x 0x%02x ", addr,
+		//	gb->wram[addr - 0xc000]);
 		return gb->wram[addr - 0xC000];
 	}
 	if (addr >= 0xFE00 && addr <= 0xFE9F) {
@@ -111,7 +115,7 @@ uint8_t bus_read(struct GameBoy *gb, uint16_t addr)
 		fprintf(stderr, "  ALERT: noop RD @PROHIBITED 0x%04x ", addr);
 		return 0x00;
 	}
-	if (addr >= 0xFF00 && addr <= 0xFF7F) {
+	if ((addr >= 0xFF00 && addr <= 0xFF7F) || (addr == 0xFFFF)) { //io
 		//io
 		return io_read(gb, addr);
 	}
@@ -169,6 +173,11 @@ void io_write(struct GameBoy *gb, uint16_t addr, uint8_t data)
 	case 0xFF44:
 		fprintf(stderr, "  ALERT: noop wr @io LY 0x%04x 0x%02x ", addr,
 			data);
+		break;
+	case 0xFF46:
+		fprintf(stderr, "  ALERT: wr @io DMA 0x%04x 0x%02x ", addr,
+			data);
+		dma_start(gb, data);
 		break;
 	case 0xFF47:
 		gb->ppu.bgp = data;
@@ -231,6 +240,7 @@ void bus_write(struct GameBoy *gb, uint16_t addr, uint8_t data)
 	if (addr >= 0xC000 && addr <= 0xDFFF) { //wram
 		//wram
 		//fprintf(stderr, "  wr @wram 0x%04x 0x%02x ", addr, data);
+		fprintf(stderr, "  wr @wram 0x%04x 0x%02x ", addr, data);
 		gb->wram[addr - 0xC000] = data;
 		return;
 	}
@@ -252,7 +262,7 @@ void bus_write(struct GameBoy *gb, uint16_t addr, uint8_t data)
 			addr, data);
 		return;
 	}
-	if (addr >= 0xFF00 && addr <= 0xFF7F || addr == 0xFFFF) { //io
+	if ((addr >= 0xFF00 && addr <= 0xFF7F) || (addr == 0xFFFF)) { //io
 		io_write(gb, addr, data);
 		return;
 	}

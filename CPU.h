@@ -53,8 +53,8 @@ typedef struct CPU {
 		};
 	};
 	uint8_t *rg[8];
-	uint16_t pc, sp;
-	bool ime, dblspd, prefix, halted;
+	uint16_t pc, sp, dma_addr;
+	bool ime, dblspd, prefix, halted, halt_bug, stop, dma_remain;
 	int ime_delay;
 
 	//debug values
