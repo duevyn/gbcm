@@ -3,9 +3,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "GameBoy.h"
+#include "logger.h"
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
+//#define fprintf(stderr, ...) ((void)0)
 
 /* This function runs once at startup. */
 void init_sdl()
@@ -73,6 +75,9 @@ int main(int argc, char *argv[])
 	gb_loadrom(&gb, argv[1]);
 	init_sdl();
 	int running = 1;
+	log_init("cpu_log.txt");
+	log_cpu_state(&gb);
+
 	while (running) {
 		uint64_t frame_start = SDL_GetTicksNS();
 		hndlevnt(&running);
@@ -93,6 +98,7 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "-- after delay %06f ms\n\n\n",
 			(SDL_GetTicksNS() - frame_start) / 1000000.0f);
 	}
+	log_close();
 
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
