@@ -1,5 +1,7 @@
 #include "PPU.h"
 #include "GameBoy.h"
+#include "logger.h"
+#include "io.h"
 #include <stdio.h>
 
 //#define fprintf(stderr, ...) ((void)0)
@@ -16,27 +18,21 @@ void update_stat()
 	fprintf(stderr, "---- ALERT PPU MODE CHANGE ");
 }
 
-void check_lyc_eq_ly(struct PPU *ppu)
+void check_lyc_eq_ly(struct GameBoy *gb)
 {
-	if (ppu->ly == ppu->lyc)
+	if (io_map[LY] == io_map[LYC]) {
 		fprintf(stderr, "---- ALERT: LY == LYC ");
-}
-
-void request_interrupt(struct GameBoy *gb, uint8_t bit)
-{
-	gb->if_reg |= (1U << bit);
-	fprintf(stderr,
-		"----  ALERT: REQUEST INTERUPPT ime= %b ie=0x%02x, if=0x%02x lcdc=0x%02x ",
-		gb->cpu.ime, gb->ie, gb->if_reg, gb->ppu.lcdc);
+	}
 }
 
 void ppu_step(struct GameBoy *gb, int dots)
 {
-	if ((gb->ppu.lcdc & 0x80) == 0) {
-		fprintf(stderr, "    ##### PPU OFF\n");
+	if ((io_map[LCDC] & 0x80) == 0) {
+		fprintf(stderr, "\n");
 		return;
 	}
 	gb->ppu.ly_dots += dots;
+	uint8_t prev = io_map[LY];
 	const char *prv_mode = ModeNames[gb->ppu.mode];
 	switch (gb->ppu.mode) {
 	case (OAM): //mode 2
@@ -66,36 +62,43 @@ void ppu_step(struct GameBoy *gb, int dots)
 
 		if (gb->ppu.ly_dots >= SCANLINE_DOTS) {
 			gb->ppu.ly_dots -= SCANLINE_DOTS;
-			gb->ppu.ly++;
-			check_lyc_eq_ly(&gb->ppu);
+			io_map[LY]++;
+			check_lyc_eq_ly(gb);
 
-			if (gb->ppu.ly < LY_VBLNK_FST) {
+			if (io_map[LY] < LY_VBLNK_FST) {
 				gb->ppu.mode = OAM;
 				update_stat();
 			} else {
 				gb->ppu.mode = VBLNK;
-				request_interrupt(gb, 0);
+				io_req_interrupt(IO_VBLANK);
+
+				if (logfile) {
+					fprintf(logfile,
+						"%lu: [VBLANK INTERRUPT REQ] prev line %d, curr line %d<<<\n",
+						gb->cpu.cnt, prev, io_map[LY]);
+				}
 			}
 		}
 		break;
 	case (VBLNK): // mode 1
 		if (gb->ppu.ly_dots >= SCANLINE_DOTS) {
 			gb->ppu.ly_dots -= SCANLINE_DOTS;
-			gb->ppu.ly++;
+			io_map[LY]++;
 
-			if (gb->ppu.ly > LY_VBLNK_LST) {
+			if (io_map[LY] > LY_VBLNK_LST) {
 				gb->ppu.mode = OAM;
-				gb->ppu.ly = 0;
+				io_map[LY] = 0;
 			}
 
-			check_lyc_eq_ly(&gb->ppu);
+			check_lyc_eq_ly(gb);
 			update_stat();
 		}
 		break;
 	}
 
-	fprintf(stderr, "--- %s (ly=%d: ly_dots=%d)\n", ModeNames[gb->ppu.mode],
-		gb->ppu.ly, gb->ppu.ly_dots);
+	fprintf(stderr, "--- %s (ly=%d: ly_dots=%d, lyc=%d)\n",
+		ModeNames[gb->ppu.mode], io_map[LY], gb->ppu.ly_dots,
+		io_map[LYC]);
 	if (prv_mode != ModeNames[gb->ppu.mode] && gb->ppu.mode == OAM)
 		fprintf(stderr, "\n\n");
 

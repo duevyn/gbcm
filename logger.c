@@ -2,7 +2,7 @@
 #include "logger.h"
 #include "bus.h"
 
-static FILE *logfile = NULL;
+FILE *logfile = NULL;
 
 void log_init(const char *filename)
 {

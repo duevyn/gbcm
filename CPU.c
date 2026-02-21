@@ -3,8 +3,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "GameBoy.h"
-#include "logger.h"
+#include "io.h"
 #include "bus.h"
+#include "logger.h"
 //#define fprintf(stderr, ...) ((void)0)
 
 const char *const rgstr[] = { "B", "C", "D", "E", "H", "L", "[HL]", "A" };
@@ -252,8 +253,7 @@ uint8_t op_stop(struct GameBoy *gb) //0x10
 	/// https://gbdev.io/pandocs/Reducing_Power_Consumption.html#using-the-stop-instruction
 
 	gb->cpu.pc++;
-	fprintf(stderr, "pc 0x%04x, ime 0x%02x, ie 0x%02x, if 0x%02x",
-		gb->cpu.pc, gb->cpu.ime, gb->ie, gb->if_reg);
+	fprintf(stderr, "pc 0x%04x, ime 0x%02x  ", gb->cpu.pc, gb->cpu.ime);
 	gb->cpu.dblspd = !gb->cpu.dblspd;
 	gb->cpu.stop = true;
 	return gb->cpu.instr->dots[0];
@@ -368,11 +368,10 @@ uint8_t op_jr_NZ_e8(struct GameBoy *gb) //0x20
 {
 	int8_t e8 = bus_read(gb, gb->cpu.pc++);
 	if (gb->cpu.fZ) {
-		fprintf(stderr, "NZ FALSE %08b e8=%d (0x%02x)", gb->cpu.f, e8,
-			e8);
+		fprintf(stderr, "NZ FALSE %08b e8=%d ", gb->cpu.f, e8);
 		return gb->cpu.instr->dots[1];
 	}
-	fprintf(stderr, "NZ TRUE %08b e8=%d (0x%02x)", gb->cpu.f, e8, e8);
+	fprintf(stderr, "NZ TRUE %08b e8=%d ", gb->cpu.f, e8);
 	gb->cpu.pc += e8;
 	return gb->cpu.instr->dots[0];
 }
@@ -922,6 +921,29 @@ uint8_t op_halt(struct GameBoy *gb) //0x76
 	// if ime and no interrupts
 	// if no ime and interrupts
 
+	//If the IME flag is set:
+	//The CPU enters low-power mode until after an interrupt is about to be serviced. The handler is executed normally, and the CPU resumes execution after the HALT when that returns.
+	//
+	//If the IME flag is not set, and no interrupts are pending:
+	//As soon as an interrupt becomes pending, the CPU resumes execution. This is like the above, except that the handler is not called.
+	//
+	//If the IME flag is not set, and some interrupt is pending:
+	//The CPU continues execution after the HALT, but the byte after it is read twice in a row (PC is not incremented, due to a hardware bug).
+	// //
+	uint8_t pend = (io_map[IF] & io_ie);
+	fprintf(stderr, " ime=%b ie=%b if=%b pend=%b ", gb->cpu.ime, io_ie,
+		io_map[IF], pend);
+	exit(1);
+	if (!gb->cpu.ime) {
+		if (pend == 0)
+			gb->cpu.halted = 1;
+		else
+			gb->cpu.halt_bug = 1;
+
+		return gb->cpu.instr->dots[0];
+	}
+
+	gb->cpu.halted = 1;
 	return gb->cpu.instr->dots[0];
 }
 
@@ -1875,7 +1897,7 @@ struct instr optbl[256] = {
 	[0x37] = { "SCF 1,4 -001", op_scf, 1, { 4, 4 }, 0x37 },
 	[0x38] = { "JR C,e8 2,12/8", op_jr_C_e8, 2, { 12, 8 }, 0x38 },
 	[0x39] = { "ADD HL,SP 1,8 -0HC", op_add_HL_SP, 1, { 8, 8 }, 0x39 },
-	[0x3A] = { "LD A,[HL] 1,8", op_ld_A_$HLD, 1, { 8, 8 }, 0x3A },
+	[0x3A] = { "LD A,[HLD] 1,8", op_ld_A_$HLD, 1, { 8, 8 }, 0x3A },
 	[0x3B] = { "DEC SP 1,8", op_dec_SP, 1, { 8, 8 }, 0x3B },
 	[0x3C] = { "INC A 1,4 Z0H-", op_inc_A, 1, { 4, 4 }, 0x3C },
 	[0x3D] = { "DEC A 1,4 Z1H-", op_dec_A, 1, { 4, 4 }, 0x3D },
@@ -1935,7 +1957,7 @@ struct instr optbl[256] = {
 	[0x73] = { "LD [HL],E 1,8", op_ld_$HL_E, 1, { 8, 8 }, 0x73 },
 	[0x74] = { "LD [HL],H 1,8", op_ld_$HL_H, 1, { 8, 8 }, 0x74 },
 	[0x75] = { "LD [HL],L 1,8", op_ld_$HL_L, 1, { 8, 8 }, 0x75 },
-	[0x76] = { "HALT 1,4", NULL, 1, { 4, 4 }, 0x76 },
+	[0x76] = { "HALT 1,4", op_halt, 1, { 4, 4 }, 0x76 },
 	[0x77] = { "LD [HL],A 1,8", op_ld_$HL_A, 1, { 8, 8 }, 0x77 },
 	[0x78] = { "LD A,B 1,4", op_ld_A_B, 1, { 4, 4 }, 0x78 },
 	[0x79] = { "LD A,C 1,4", op_ld_A_C, 1, { 4, 4 }, 0x79 },
@@ -2254,7 +2276,7 @@ uint8_t cb_exec(struct GameBoy *gb)
 	return dots;
 }
 
-static struct instr cb_instr = { "", cb_exec, 2, { 8, 8 }, 0 };
+struct instr cb_instr = { "", cb_exec, 2, { 8, 8 }, 0 };
 
 void cpu_fetch(struct GameBoy *gb)
 {
@@ -2262,6 +2284,10 @@ void cpu_fetch(struct GameBoy *gb)
 	gb->cpu.op = bus_read(gb, gb->cpu.pc++);
 	gb->cpu.repeat = prev == gb->cpu.op ? gb->cpu.repeat + 1 : 0;
 
+	if (gb->cpu.halt_bug) {
+		gb->cpu.pc--;
+		gb->cpu.halt_bug = 0;
+	}
 	/*
 	if (gb->cpu.repeat == 255) {
 		fprintf(stderr, "\n");
@@ -2280,31 +2306,30 @@ void cpu_fetch(struct GameBoy *gb)
 
 int cpu_exec(struct GameBoy *gb)
 {
-	struct CPU cpu = gb->cpu;
-	cpu.cnt++;
+	gb->cpu.cnt++;
 
 	if (!gb->cpu.prefix) {
-		fprintf(stderr, "0x%04x: op %02x -- %lu %lu %s ", cpu.pc - 1,
-			cpu.instr->op, cpu.cnt, cpu.dcnt, cpu.instr->mnem);
+		fprintf(stderr, "0x%04x: op %02x -- %lu %lu %s ",
+			gb->cpu.pc - 1, gb->cpu.instr->op, gb->cpu.cnt,
+			gb->cpu.dcnt, gb->cpu.instr->mnem);
 	} else {
-		fprintf(stderr, "0x%04x* cb %02x -- %lu %lu ", cpu.pc - 2,
-			cpu.instr->op, cpu.cnt, cpu.dcnt);
+		fprintf(stderr, "0x%04x* cb %02x -- %lu %lu ", gb->cpu.pc - 2,
+			gb->cpu.instr->op, gb->cpu.cnt, gb->cpu.dcnt);
 	}
 
-	if (!cpu.instr->exec) {
+	if (!gb->cpu.instr->exec) {
 		fprintf(stderr, " !!! ERROR: NOT IMPLEMENTED\n\n");
 		exit(EXIT_FAILURE);
 	}
 
-	uint8_t result = cpu.instr->exec(gb);
-	cpu.prefix = false;
-	log_cpu_state(gb); //gameboy doctor
+	uint8_t result = gb->cpu.instr->exec(gb);
+	gb->cpu.prefix = false;
 
-	if (cpu.ime_delay > 0 && --cpu.ime_delay == 0) {
-		cpu.ime = true;
+	if (gb->cpu.ime_delay > 0 && --gb->cpu.ime_delay == 0) {
+		gb->cpu.ime = true;
 		fprintf(stderr, "** SET IME ");
 	}
-	cpu.dcnt += result;
+	gb->cpu.dcnt += result;
 
 	/*
 	if (cpu.cnt == 61549) {
@@ -2318,9 +2343,15 @@ int cpu_exec(struct GameBoy *gb)
 
 int cpu_step(struct GameBoy *gb)
 {
+	if (gb->cpu.halted) {
+		//log_cpu_state(gb);
+		return 4;
+	}
+
 	if (!gb->cpu.instr)
 		cpu_fetch(gb);
 	int result = cpu_exec(gb);
+	//log_cpu_state(gb); //gameboy doctor
 	cpu_fetch(gb);
 	return result;
 }

@@ -7,17 +7,13 @@
 #include "DMA.h"
 
 typedef struct GameBoy {
-	CPU cpu;
-	PPU ppu;
-	Cartridge crt;
-	DMA dma;
+	struct CPU cpu;
+	struct PPU ppu;
+	struct Cartridge crt;
+	struct DMA dma;
 
 	uint8_t wram[8192];
 	uint8_t hram[127];
-	uint8_t ie;
-	uint8_t if_reg;
-	uint8_t sb;
-	uint8_t sc;
 } GameBoy;
 
 void gb_emulate(struct GameBoy *gb);

@@ -69,7 +69,6 @@ void render()
 
 int main(int argc, char *argv[])
 {
-	//cpu_ldrom(&cpu, argv[1]);
 	fprintf(stderr, "MS per frame %06f ms\n\n", NS_PER_FRAME / 1000000.0f);
 	struct GameBoy gb = { 0 };
 	gb_loadrom(&gb, argv[1]);
@@ -83,7 +82,7 @@ int main(int argc, char *argv[])
 		hndlevnt(&running);
 		gb_emulate(&gb);
 
-		fprintf(stderr, "\ntime emulating: %06f ms ",
+		fprintf(stderr, "\n\n\n\n\n\n\n\n\n\ntime emulating: %06f ms ",
 			(SDL_GetTicksNS() - frame_start) / 1000000.0f);
 		render();
 		fprintf(stderr, "-- aftr render: %06f ms ",
@@ -95,11 +94,11 @@ int main(int argc, char *argv[])
 		while (delta_t < NS_PER_FRAME) {
 			delta_t = SDL_GetTicksNS() - frame_start;
 		}
-		fprintf(stderr, "-- after delay %06f ms\n\n\n",
+		fprintf(stderr, "-- after delay %06f ms\n\n\n\n\n\n\n\n\n\n",
 			(SDL_GetTicksNS() - frame_start) / 1000000.0f);
 	}
-	log_close();
 
+	log_close();
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
 	SDL_Quit();
