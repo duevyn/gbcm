@@ -6,7 +6,7 @@
 #include "io.h"
 #include "bus.h"
 #include "logger.h"
-//#define fprintf(stderr, ...) ((void)0)
+#define fprintf(stderr, ...) ((void)0)
 
 const char *const rgstr[] = { "B", "C", "D", "E", "H", "L", "[HL]", "A" };
 
@@ -409,6 +409,32 @@ uint8_t op_dec_H(struct GameBoy *gb) //0x25
 uint8_t op_ld_H_n8(struct GameBoy *gb) //0x26
 {
 	gb->cpu.h = bus_read(gb, gb->cpu.pc++);
+	return gb->cpu.instr->dots[0];
+}
+
+uint8_t op_daa(struct GameBoy *gb) //0x27
+{
+	uint16_t adj = 0;
+	uint8_t carry = gb->cpu.fC;
+
+	if (gb->cpu.fN) {
+		adj = gb->cpu.fH ? adj + 0x6 : adj;
+		adj = gb->cpu.fC ? adj + 0x60 : adj;
+		gb->cpu.a -= adj;
+	} else {
+		if (gb->cpu.fH || ((gb->cpu.a & 0x0F) > 0x09))
+			adj += 0x06;
+		if (gb->cpu.fC || (gb->cpu.a > 0x99)) {
+			adj += 0x60;
+			carry = 1;
+		}
+		gb->cpu.a += adj;
+	}
+
+	gb->cpu.fZ = (gb->cpu.a == 0);
+	gb->cpu.fH = 0;
+	gb->cpu.fC = carry;
+
 	return gb->cpu.instr->dots[0];
 }
 
@@ -1878,7 +1904,7 @@ struct instr optbl[256] = {
 	[0x24] = { "INC H 1,4 Z0H-", op_inc_H, 1, { 4, 4 }, 0x24 },
 	[0x25] = { "DEC H 1,4 Z1H-", op_dec_H, 1, { 4, 4 }, 0x25 },
 	[0x26] = { "LD H,n8 2,8", op_ld_H_n8, 2, { 8, 8 }, 0x26 },
-	[0x27] = { "DAA 1,4 Z-0C", NULL, 1, { 4, 4 }, 0x27 },
+	[0x27] = { "DAA 1,4 Z-0C", op_daa, 1, { 4, 4 }, 0x27 },
 	[0x28] = { "JR Z,e8 2,12/8", op_jr_Z_e8, 2, { 12, 8 }, 0x28 },
 	[0x29] = { "ADD HL,HL 1,8 -0HC", op_add_HL_HL, 1, { 8, 8 }, 0x29 },
 	[0x2A] = { "LD A,[HL] 1,8", op_ld_A_$HLI, 1, { 8, 8 }, 0x2A },
@@ -2311,10 +2337,10 @@ int cpu_exec(struct GameBoy *gb)
 	if (!gb->cpu.prefix) {
 		fprintf(stderr, "0x%04x: op %02x -- %lu %lu %s ",
 			gb->cpu.pc - 1, gb->cpu.instr->op, gb->cpu.cnt,
-			gb->cpu.dcnt, gb->cpu.instr->mnem);
+			gb->cpu.dcnt / 70224, gb->cpu.instr->mnem);
 	} else {
 		fprintf(stderr, "0x%04x* cb %02x -- %lu %lu ", gb->cpu.pc - 2,
-			gb->cpu.instr->op, gb->cpu.cnt, gb->cpu.dcnt);
+			gb->cpu.instr->op, gb->cpu.cnt, gb->cpu.dcnt / 70224);
 	}
 
 	if (!gb->cpu.instr->exec) {
