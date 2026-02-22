@@ -15,13 +15,42 @@ const char *const ModeNames[] = {
 
 void update_stat()
 {
-	fprintf(stderr, "---- ALERT PPU MODE CHANGE ");
 }
 
 void check_lyc_eq_ly(struct GameBoy *gb)
 {
-	if (io_map[LY] == io_map[LYC]) {
-		fprintf(stderr, "---- ALERT: LY == LYC ");
+}
+
+static const uint32_t colors[4] = {
+	0xFFE0F8D0, 0xFF88C070, 0xFF346856, 0xFF081820,
+	//0xFF9BBC0F,
+	//0xFF8BAC0F,
+	//0xFF306230,
+	//0xFF0F380F
+};
+
+void render_scanline(struct PPU *ppu)
+{
+	uint8_t hi_byte, lo_byte, hi_bit, lo_bit, color;
+
+	uint8_t line = io_map[LY];
+	uint16_t tl_offset = (line / 8) * 32 + 0x1800;
+	uint16_t px_ind = 160 * line;
+	uint8_t tl_row = line % 8;
+
+	for (int i = 0; i < 20; i++) {
+		uint16_t tl_id = ppu->vram[tl_offset + i];
+		uint16_t tl_ind = tl_id * 16 + tl_row * 2;
+		lo_byte = ppu->vram[tl_ind];
+		hi_byte = ppu->vram[tl_ind + 1];
+
+		for (int bit = 7; bit >= 0; bit--) {
+			lo_bit = (lo_byte >> bit) & 1;
+			hi_bit = (hi_byte >> bit) & 1;
+			color = (hi_bit << 1) | lo_bit;
+			uint8_t shade = (io_map[BGP] >> (color * 2)) & 0x03;
+			ppu->framebuffer[px_ind++] = colors[color];
+		}
 	}
 }
 
@@ -31,9 +60,9 @@ void ppu_step(struct GameBoy *gb, int dots)
 		fprintf(stderr, "\n");
 		return;
 	}
+
 	gb->ppu.ly_dots += dots;
-	uint8_t prev = io_map[LY];
-	const char *prv_mode = ModeNames[gb->ppu.mode];
+	uint8_t prev_ln = io_map[LY];
 	switch (gb->ppu.mode) {
 	case (OAM): //mode 2
 		if (gb->ppu.ly_dots >= OAM_DOTS) {
@@ -41,25 +70,16 @@ void ppu_step(struct GameBoy *gb, int dots)
 			gb->ppu.md3delay = 0; //TODO: calc mode 3 delay
 			update_stat();
 		}
-
 		break;
 	case (DRAW): //mode 3
-
-		// mode 3: During Mode 3, by default the PPU outputs one pixel to the screen per dot, from left to right; the screen is 160 pixels wide, so the minimum Mode 3 length is 160 + 12(1) = 172 dots.
-		// (1) The 12 extra dots of penalty come from two tile fetches at the beginning of Mode 3. One is the first tile in the scanline (the one that gets shifted by SCX % 8 pixels), the other is simply discarded
-
 		if (gb->ppu.ly_dots >=
 		    OAM_DOTS + DRAW_DOTS_MIN + gb->ppu.md3delay) {
 			gb->ppu.mode = HBLNK;
 			update_stat();
+			render_scanline(&gb->ppu);
 		}
 		break;
 	case (HBLNK): // mode 0
-
-		// mode 0 (hblank) length is 376 - len mode 3
-		// starts when line of pixels is completely drawn. Opportunity to do some work before next line. One for every line.
-		// enables raster effects
-
 		if (gb->ppu.ly_dots >= SCANLINE_DOTS) {
 			gb->ppu.ly_dots -= SCANLINE_DOTS;
 			io_map[LY]++;
@@ -71,12 +91,6 @@ void ppu_step(struct GameBoy *gb, int dots)
 			} else {
 				gb->ppu.mode = VBLNK;
 				io_req_interrupt(IO_VBLANK);
-
-				if (logfile) {
-					fprintf(logfile,
-						"%lu: [VBLANK INTERRUPT REQ] prev line %d, curr line %d<<<\n",
-						gb->cpu.cnt, prev, io_map[LY]);
-				}
 			}
 		}
 		break;
@@ -99,7 +113,8 @@ void ppu_step(struct GameBoy *gb, int dots)
 	fprintf(stderr, "--- %s (ly=%d: ly_dots=%d, lyc=%d)\n",
 		ModeNames[gb->ppu.mode], io_map[LY], gb->ppu.ly_dots,
 		io_map[LYC]);
-	if (prv_mode != ModeNames[gb->ppu.mode] && gb->ppu.mode == OAM)
+
+	if (prev_ln != io_map[LY])
 		fprintf(stderr, "\n\n");
 
 	return;
