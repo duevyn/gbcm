@@ -4,20 +4,22 @@
 #include "logger.h"
 #include <stdio.h>
 
-//#define fprintf(stderr, ...) ((void)0)
+#define fprintf(stderr, ...) ((void)0)
 uint8_t hndl_interrupts(struct GameBoy *gb)
 {
 	uint8_t pending = (io_map[IF] & io_ie);
+	if (pending)
+		gb->cpu.halted = 0;
+
 	if (!pending || !gb->cpu.ime)
 		return 0;
 
-	gb->cpu.halted = 0;
 	gb->cpu.ime = 0;
-
 	uint8_t bit = __builtin_ctz(pending);
 	io_map[IF] &= ~(1 << bit);
 
-	gb->cpu.pc--; // move back since next op already fetched
+	// move back since next op already fetched
+	gb->cpu.pc = !gb->cpu.prefix ? gb->cpu.pc - 1 : gb->cpu.pc - 2;
 	gb->cpu.instr = NULL;
 
 	bus_write(gb, --gb->cpu.sp, gb->cpu.pc >> 8);
@@ -28,11 +30,6 @@ uint8_t hndl_interrupts(struct GameBoy *gb)
 		"-- Jump to 0x%04x (pending %b, bit %d, if %b, ret pc 0x%04x)\n\n\n\n",
 		pc, pending, bit, io_map[IF], gb->cpu.pc);
 	gb->cpu.pc = pc;
-	if (logfile) {
-		fprintf(logfile,
-			"%lu: [INTERRUPT]  >>> CPU JUMP TO VBLANK (PC:0040) <<<\n",
-			gb->cpu.cnt);
-	}
 
 	return 20; //5 M cycles
 }
@@ -59,13 +56,13 @@ void gb_emulate(struct GameBoy *gb)
 			ticks = dma_step(gb);
 
 		ppu_step(gb, ticks);
-		tmr_step(gb, ticks);
+		io_timer_step(ticks);
 
 		if (!gb->dma.active && (itr_ticks = hndl_interrupts(gb))) {
 			fprintf(stderr,
 				"*** ALERT: PPU/timer step for interrupt ");
 			ppu_step(gb, itr_ticks);
-			tmr_step(gb, itr_ticks);
+			io_timer_step(ticks);
 		}
 
 		tot_ticks += ticks + itr_ticks;

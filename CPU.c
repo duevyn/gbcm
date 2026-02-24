@@ -6,7 +6,7 @@
 #include "io.h"
 #include "bus.h"
 #include "logger.h"
-#define fprintf(stderr, ...) ((void)0)
+//#define fprintf(stderr, ...) ((void)0)
 
 const char *const rgstr[] = { "B", "C", "D", "E", "H", "L", "[HL]", "A" };
 
@@ -939,37 +939,11 @@ uint8_t op_ld_$HL_L(struct GameBoy *gb) //0x75
 
 uint8_t op_halt(struct GameBoy *gb) //0x76
 {
-	// TODO Enter CPU low-power consumption mode until an interrupt occurs.
+	if (gb->cpu.ime || !(io_map[IF] & io_ie))
+		gb->cpu.halted = true;
+	else
+		gb->cpu.halt_bug = true;
 
-	//The exact behavior of this instruction depends on the state of the IME flag, and whether interrupts are pending (i.e. whether ‘[IE] & [IF]’ is non-zero)
-
-	// if ime and interupts pending
-	// if ime and no interrupts
-	// if no ime and interrupts
-
-	//If the IME flag is set:
-	//The CPU enters low-power mode until after an interrupt is about to be serviced. The handler is executed normally, and the CPU resumes execution after the HALT when that returns.
-	//
-	//If the IME flag is not set, and no interrupts are pending:
-	//As soon as an interrupt becomes pending, the CPU resumes execution. This is like the above, except that the handler is not called.
-	//
-	//If the IME flag is not set, and some interrupt is pending:
-	//The CPU continues execution after the HALT, but the byte after it is read twice in a row (PC is not incremented, due to a hardware bug).
-	// //
-	uint8_t pend = (io_map[IF] & io_ie);
-	fprintf(stderr, " ime=%b ie=%b if=%b pend=%b ", gb->cpu.ime, io_ie,
-		io_map[IF], pend);
-	exit(1);
-	if (!gb->cpu.ime) {
-		if (pend == 0)
-			gb->cpu.halted = 1;
-		else
-			gb->cpu.halt_bug = 1;
-
-		return gb->cpu.instr->dots[0];
-	}
-
-	gb->cpu.halted = 1;
 	return gb->cpu.instr->dots[0];
 }
 
@@ -1632,6 +1606,7 @@ uint8_t op_ret_C(struct GameBoy *gb) //0xD8
 uint8_t op_reti(struct GameBoy *gb) //0xD9
 {
 	gb->cpu.ime = true;
+	gb->cpu.ime_delay = 0;
 	gb->cpu.pc = bus_read(gb, gb->cpu.sp++);
 	gb->cpu.pc |= (bus_read(gb, gb->cpu.sp++) << 8);
 
@@ -2109,7 +2084,7 @@ struct instr optbl[256] = {
 	[0xF1] = { "POP AF 1,12 ZNHC", op_pop_AF, 1, { 12, 12 }, 0xF1 },
 	[0xF2] = { "LDH A,[C] 1,8", op_ldh_A_$C, 1, { 8, 8 }, 0xF2 },
 	[0xF3] = { "DI 1,4", op_di, 1, { 4, 4 }, 0xF3 },
-	[0xF4] = { "ILLEGAL_F4 1,4", op_noop, 1, { 4, 4 }, 0xF4 },
+	[0xF4] = { "ILLEGAL_F4 1,4", NULL, 1, { 4, 4 }, 0xF4 },
 	[0xF5] = { "PUSH AF 1,16", op_push_AF, 1, { 16, 16 }, 0xF5 },
 	[0xF6] = { "OR A,n8 2,8 Z000", op_or_A_n8, 2, { 8, 8 }, 0xF6 },
 	[0xF7] = { "RST $30 1,16", op_rst_$30, 1, { 16, 16 }, 0xF7 },
@@ -2306,28 +2281,22 @@ struct instr cb_instr = { "", cb_exec, 2, { 8, 8 }, 0 };
 
 void cpu_fetch(struct GameBoy *gb)
 {
-	uint8_t prev = gb->cpu.op;
+	uint16_t pc = gb->cpu.pc;
 	gb->cpu.op = bus_read(gb, gb->cpu.pc++);
-	gb->cpu.repeat = prev == gb->cpu.op ? gb->cpu.repeat + 1 : 0;
 
-	if (gb->cpu.halt_bug) {
-		gb->cpu.pc--;
-		gb->cpu.halt_bug = 0;
-	}
-	/*
-	if (gb->cpu.repeat == 255) {
-		fprintf(stderr, "\n");
-		exit(1);
-	}*/
-	if (gb->cpu.op == 0xcb) {
+	if (gb->cpu.op != 0xCB) {
+		gb->cpu.instr = &optbl[gb->cpu.op];
+	} else {
 		gb->cpu.op = bus_read(gb, gb->cpu.pc++);
 		gb->cpu.instr = &cb_instr;
 		gb->cpu.instr->op = gb->cpu.op;
 		gb->cpu.prefix = true;
-		return;
 	}
 
-	gb->cpu.instr = &optbl[gb->cpu.op];
+	if (gb->cpu.halt_bug) {
+		gb->cpu.pc = pc;
+		gb->cpu.halt_bug = false;
+	}
 }
 
 int cpu_exec(struct GameBoy *gb)
@@ -2369,13 +2338,12 @@ int cpu_exec(struct GameBoy *gb)
 
 int cpu_step(struct GameBoy *gb)
 {
-	if (gb->cpu.halted) {
-		//log_cpu_state(gb);
+	if (gb->cpu.halted)
 		return 4;
-	}
 
 	if (!gb->cpu.instr)
 		cpu_fetch(gb);
+
 	int result = cpu_exec(gb);
 	//log_cpu_state(gb); //gameboy doctor
 	cpu_fetch(gb);
