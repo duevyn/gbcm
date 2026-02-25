@@ -1,6 +1,7 @@
 #ifndef IO_H
 #define IO_H
 #include <stdint.h>
+#include <stdbool.h>
 
 #define IO_OFFSET 0xFF00U
 
@@ -8,12 +9,23 @@ extern uint8_t io_map[128];
 extern uint16_t io_div16;
 extern uint8_t io_ie;
 
+enum io_joypad_ctrl { JOYPAD_BUTTONS = 1 << 5, JOYPAD_DPAD = 1 << 4 };
+
+enum io_joypad {
+	START$DOWN = (1 << 3),
+	SELECT$UP = (1 << 2),
+	B$LEFT = (1 << 1),
+	A$RIGHT = (1 << 0)
+};
+
 struct GameBoy;
 
 void io_init();
 void io_timer_step(uint8_t dots);
 uint8_t io_rd(uint16_t addr);
 void io_wr(struct GameBoy *gb, uint16_t addr, uint8_t data);
+void io_joypad_press(enum io_joypad_ctrl ctrl, enum io_joypad button);
+void io_joypad_release(enum io_joypad_ctrl ctrl, enum io_joypad button);
 
 enum io_registers {
 	P1 = 0xFF00 - IO_OFFSET,
