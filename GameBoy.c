@@ -3,6 +3,7 @@
 #include "io.h"
 #include "logger.h"
 #include <stdio.h>
+#include <string.h>
 
 #define fprintf(stderr, ...) ((void)0)
 uint8_t hndl_interrupts(struct GameBoy *gb)
@@ -37,11 +38,8 @@ uint8_t hndl_interrupts(struct GameBoy *gb)
 void gb_emulate(struct GameBoy *gb)
 {
 	int ticks = 0, tot_ticks = 0, itr_ticks = 0;
-
-	fprintf(stderr,
-		"PPU: mode %d, ly %d, ly_dots %d, lydc %08b, stat %08b\n\n",
-		gb->ppu.mode, io_map[LY], gb->ppu.ly_dots, io_map[LCDC],
-		io_map[STAT]);
+	gb->ppu.done_frame = false;
+	bool logframe = false;
 	do {
 		/*
 		if (gb->cpu.stop) {
@@ -59,20 +57,24 @@ void gb_emulate(struct GameBoy *gb)
 		io_timer_step(ticks);
 
 		if (!gb->dma.active && (itr_ticks = hndl_interrupts(gb))) {
-			fprintf(stderr,
-				"*** ALERT: PPU/timer step for interrupt ");
 			ppu_step(gb, itr_ticks);
 			io_timer_step(ticks);
 		}
 
 		tot_ticks += ticks + itr_ticks;
-	} while (tot_ticks < DOTS_PER_FRAME);
+		if (tot_ticks > DOTS_PER_FRAME && !gb->ppu.done_frame)
+			logframe = true;
+	} while (!gb->ppu.done_frame);
+	if (logframe)
+		fprintf(stderr, "\n\n\nPPU catch up: %d total ticks\n\n\n\n",
+			tot_ticks);
 }
 
 void gb_loadrom(struct GameBoy *gb, const char *path)
 {
 	cart_load(&gb->crt, path);
 	io_init();
+	memset(gb->ppu.framebuffer, 0xFFFFFFFF, sizeof(gb->ppu.framebuffer));
 
 	gb->ppu.mode = OAM;
 

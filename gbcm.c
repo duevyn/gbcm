@@ -34,6 +34,7 @@ void init_sdl()
 	}
 }
 
+// Z = A, X = B, Backspace = Select, Enter = Start, ESC = quit
 void hndlevnt(int *running)
 {
 	SDL_Event event;
@@ -45,16 +46,16 @@ void hndlevnt(int *running)
 
 		if (event.type == SDL_EVENT_KEY_DOWN) {
 			switch (event.key.key) {
-			case SDLK_Z:
+			case SDLK_Z: //A
 				io_joypad_press(JOYPAD_BUTTONS, A$RIGHT);
 				break;
-			case SDLK_X:
+			case SDLK_X: //B
 				io_joypad_press(JOYPAD_BUTTONS, B$LEFT);
 				break;
-			case SDLK_BACKSPACE:
+			case SDLK_BACKSPACE: //Select
 				io_joypad_press(JOYPAD_BUTTONS, SELECT$UP);
 				break;
-			case SDLK_RETURN:
+			case SDLK_RETURN: //Start
 				io_joypad_press(JOYPAD_BUTTONS, START$DOWN);
 				break;
 
@@ -117,7 +118,7 @@ void render(struct GameBoy *gb)
 	int pitch = 160 * sizeof(uint32_t);
 
 	SDL_UpdateTexture(texture, NULL, gb->ppu.framebuffer, pitch);
-	SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255);
+	SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 	SDL_RenderClear(renderer);
 	SDL_RenderTexture(renderer, texture, NULL, NULL);
 	SDL_RenderPresent(renderer);
@@ -138,7 +139,7 @@ void printTiles(struct GameBoy *gb)
 		fprintf(stderr, "  -> off: %04x, addr: %04x\n", i * 32,
 			map + i * 32 - 0x8000);
 	}
-	fprintf(stderr, "\n\n");
+	fprintf(stderr, "\nLCDC: %08b\n", io_map[LCDC]);
 }
 
 int main(int argc, char *argv[])
@@ -159,29 +160,34 @@ int main(int argc, char *argv[])
 		hndlevnt(&running);
 		gb_emulate(&gb);
 
-		fprintf(stderr, "time emulating: %06f ms ",
-			(SDL_GetTicksNS() - frame_start) / 1000000.0f);
-		render(&gb);
-		fprintf(stderr, "-- aftr render: %06f ms ",
-			(SDL_GetTicksNS() - frame_start) / 1000000.0f);
+		double emTime = (SDL_GetTicksNS() - frame_start) / 1000000.0;
+
+		fprintf(stderr, "time emulating: %lf ms ", emTime);
 
 		uint64_t delta_t = SDL_GetTicksNS() - frame_start;
 		if (delta_t < NS_PER_FRAME - 1000000)
 			SDL_DelayNS(NS_PER_FRAME - 1000000 - delta_t);
-		while (delta_t < NS_PER_FRAME) {
-			delta_t = SDL_GetTicksNS() - frame_start;
+
+		double wakeTime = (SDL_GetTicksNS() - frame_start) / 1000000.0;
+		fprintf(stderr, "-- aftr wakeup: %lf ms ", wakeTime);
+		render(&gb);
+		double rendTime =
+			((SDL_GetTicksNS() - frame_start) / 1000000.0) -
+			wakeTime;
+		fprintf(stderr, "-- render time: %lf ms ", rendTime);
+
+		while ((SDL_GetTicksNS() - frame_start) < NS_PER_FRAME) {
 		}
-		fprintf(stderr, "-- after delay %06f ms %lu\n",
-			(SDL_GetTicksNS() - frame_start) / 1000000.0f,
+		fprintf(stderr, "-- after delay %lf ms %lu\n",
+			(SDL_GetTicksNS() - frame_start) / 1000000.0,
 			gb.cpu.dcnt / 70224);
 		//if ((gb.cpu.dcnt / 70224) >= 3038)
 		//	running = 0;
 	}
-	ms_tot = (SDL_GetTicksNS() / 1000000.0f);
-	fprintf(stderr, "\ntotal time: %f seconds\n\n", ms_tot / 1000.0f);
+	ms_tot = (SDL_GetTicksNS() / 1000000.0);
+	fprintf(stderr, "\ntotal time: %f seconds\n\n", ms_tot / 1000.0);
 
 	printTiles(&gb);
-
 	fprintf(stderr, "\nTAC %08b, cnt %lu \n", bus_read(&gb, 0xFF07),
 		gb.cpu.cnt);
 

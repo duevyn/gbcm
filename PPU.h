@@ -2,10 +2,11 @@
 #define PPU_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #define CLOCK 4194304
-#define DOTS_PER_FRAME 70224.0f
-#define NS_PER_FRAME (1000000000 * DOTS_PER_FRAME / CLOCK)
+#define DOTS_PER_FRAME 70224.0
+#define NS_PER_FRAME (1.0E9 * DOTS_PER_FRAME / CLOCK)
 
 #define OAM_DOTS 80
 #define DRAW_DOTS_MIN 172
@@ -15,25 +16,25 @@
 
 struct GameBoy;
 
+enum ppu_mode {
+	HBLNK,
+	VBLNK,
+	OAM,
+	DRAW,
+};
+
 typedef struct PPU {
-	// Mapped: 0x8000 - 0x9FFF.
-	// Locked: Cannot be accessed by CPU during Mode 3.
 	uint8_t vram[8192];
 
-	// Locked: Cannot be accessed by CPU during Mode 2 or 3.
 	uint8_t oam[160];
 	int ly_dots;
-	int window_line_counter;
+	int window_ly;
 
-	enum {
-		HBLNK,
-		VBLNK,
-		OAM,
-		DRAW,
-	} mode;
+	enum ppu_mode mode;
 
-	uint8_t md3delay; // mode 3 delay
+	uint8_t md3delay;
 	uint32_t framebuffer[160 * 144];
+	bool skip_frame, done_frame;
 
 } PPU;
 

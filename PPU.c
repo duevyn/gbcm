@@ -4,7 +4,7 @@
 #include "io.h"
 #include <stdio.h>
 
-//#define fprintf(stderr, ...) ((void)0)
+#define fprintf(stderr, ...) ((void)0)
 
 const char *const ModeNames[] = {
 	"H Blank",
@@ -13,34 +13,51 @@ const char *const ModeNames[] = {
 	"DRAW",
 };
 
-void update_stat()
+static const uint32_t ppu_colors[4] = {
+	0xFFE0F8D0, 0xFF88C070, 0xFF346856, 0xFF081820,
+	//0xFF9BBC0F, 0xFF8BAC0F, 0xFF306230, 0xFF0F380F
+};
+
+static uint8_t bg_line_colors[160];
+
+void update_stat(struct GameBoy *gb)
 {
+	io_map[STAT] &= ~0x03;
+	io_map[STAT] |= (gb->ppu.mode & 0x03);
 }
 
 void check_lyc_eq_ly(struct GameBoy *gb)
 {
+	fprintf(stderr, "\n\n");
+	if (io_map[LY] == io_map[LYC]) {
+		io_map[STAT] |= 0x04;
+		if (io_map[STAT] & 0x40)
+			io_req_interrupt(IO_STAT);
+		return;
+	}
+	io_map[STAT] &= ~0x04;
 }
 
-static const uint32_t colors[4] = {
-	0xFFE0F8D0, 0xFF88C070, 0xFF346856, 0xFF081820,
-	//0xFF9BBC0F,
-	//0xFF8BAC0F,
-	//0xFF306230,
-	//0xFF0F380F
-};
-
-void render_scanline(struct PPU *ppu)
+static inline void render_background(struct PPU *ppu)
 {
 	uint8_t hi_byte, lo_byte, hi_bit, lo_bit, color;
 
 	uint8_t line = io_map[LY];
-	uint16_t tl_offset = (line / 8) * 32 + 0x1800;
+	uint16_t tl_map_offset = !(0x08 & io_map[LCDC]) ? 0x1800 : 0x1C00;
+	uint16_t tl_map_addr = (line / 8) * 32 + tl_map_offset;
 	uint16_t px_ind = 160 * line;
 	uint8_t tl_row = line % 8;
 
+	uint16_t sign_addr_offset = 0;
+
 	for (int i = 0; i < 20; i++) {
-		uint16_t tl_id = ppu->vram[tl_offset + i];
+		uint8_t tl_id = ppu->vram[tl_map_addr + i];
 		uint16_t tl_ind = tl_id * 16 + tl_row * 2;
+
+		bool signed_addr_mode = !(0x10 & io_map[LCDC]);
+		if (signed_addr_mode && (tl_id <= 127))
+			tl_ind += 0x1000;
+
 		lo_byte = ppu->vram[tl_ind];
 		hi_byte = ppu->vram[tl_ind + 1];
 
@@ -48,10 +65,84 @@ void render_scanline(struct PPU *ppu)
 			lo_bit = (lo_byte >> bit) & 1;
 			hi_bit = (hi_byte >> bit) & 1;
 			color = (hi_bit << 1) | lo_bit;
+			bg_line_colors[px_ind % 160] = color;
 			uint8_t shade = (io_map[BGP] >> (color * 2)) & 0x03;
-			ppu->framebuffer[px_ind++] = colors[color];
+			ppu->framebuffer[px_ind++] = ppu_colors[shade];
 		}
 	}
+}
+
+static inline void render_window(struct PPU *ppu)
+{
+	if (!(io_map[LCDC] & 0x20))
+		return;
+}
+
+static inline void render_sprites(struct PPU *ppu)
+{
+	if (!(io_map[LCDC] & 0x02))
+		return;
+
+	uint8_t hi_byte, lo_byte, hi_bit, lo_bit, color;
+	uint8_t line = io_map[LY];
+	int8_t height = (io_map[LCDC] & 0x04) ? 16 : 8;
+
+	uint8_t count = 0;
+	for (int i = 0; i < 40 && count < 10; i++) {
+		uint8_t y_pos = ppu->oam[i * 4];
+		uint8_t x_pos = ppu->oam[i * 4 + 1];
+		uint8_t tile_idx = ppu->oam[i * 4 + 2];
+		uint8_t flags = ppu->oam[i * 4 + 3];
+
+		uint8_t sprite_top = y_pos - 16;
+		if (line < sprite_top || ((line >= sprite_top + height)))
+			continue;
+
+		count++;
+
+		if (height == 16)
+			tile_idx &= 0xFE;
+
+		uint8_t row = line - sprite_top;
+		bool y_flipped = flags & 0x40;
+		row = y_flipped ? height - 1 - row : row;
+
+		uint16_t addr = (tile_idx * 16) + (row * 2);
+		lo_byte = ppu->vram[addr];
+		hi_byte = ppu->vram[addr + 1];
+
+		uint8_t pal_reg = (flags & 0x10) ? io_map[OBP1] : io_map[OBP0];
+
+		for (int bit = 7; bit >= 0; bit--) {
+			uint8_t x_coord = x_pos - 8 + (7 - bit);
+
+			if (x_coord < 0 || x_coord >= 160)
+				continue;
+
+			bool x_flipped = (flags & 0x20);
+			bit = x_flipped ? 7 - bit : bit;
+
+			lo_bit = (lo_byte >> bit) & 1;
+			hi_bit = (hi_byte >> bit) & 1;
+
+			color = (hi_bit << 1) | lo_bit;
+			bool isCovered = (flags & 0x80) &&
+					 bg_line_colors[x_coord] != 0;
+			if (!color || isCovered)
+				continue;
+
+			uint8_t shade = (pal_reg >> (color * 2)) & 0x03;
+			ppu->framebuffer[line * 160 + x_coord] =
+				ppu_colors[shade];
+		}
+	}
+}
+
+void render_scanline(struct PPU *ppu)
+{
+	render_background(ppu);
+	render_window(ppu);
+	render_sprites(ppu);
 }
 
 void ppu_step(struct GameBoy *gb, int dots)
@@ -63,31 +154,29 @@ void ppu_step(struct GameBoy *gb, int dots)
 
 	gb->ppu.ly_dots += dots;
 	uint8_t prev_ln = io_map[LY];
+	enum ppu_mode prev_mode = gb->ppu.mode;
 	switch (gb->ppu.mode) {
 	case (OAM): //mode 2
 		if (gb->ppu.ly_dots >= OAM_DOTS) {
 			gb->ppu.mode = DRAW;
 			gb->ppu.md3delay = 0; //TODO: calc mode 3 delay
-			update_stat();
 		}
 		break;
 	case (DRAW): //mode 3
 		if (gb->ppu.ly_dots >=
 		    OAM_DOTS + DRAW_DOTS_MIN + gb->ppu.md3delay) {
 			gb->ppu.mode = HBLNK;
-			update_stat();
-			render_scanline(&gb->ppu);
+			if (!gb->ppu.skip_frame)
+				render_scanline(&gb->ppu);
 		}
 		break;
 	case (HBLNK): // mode 0
 		if (gb->ppu.ly_dots >= SCANLINE_DOTS) {
 			gb->ppu.ly_dots -= SCANLINE_DOTS;
 			io_map[LY]++;
-			check_lyc_eq_ly(gb);
 
 			if (io_map[LY] < LY_VBLNK_FST) {
 				gb->ppu.mode = OAM;
-				update_stat();
 			} else {
 				gb->ppu.mode = VBLNK;
 				io_req_interrupt(IO_VBLANK);
@@ -102,10 +191,9 @@ void ppu_step(struct GameBoy *gb, int dots)
 			if (io_map[LY] > LY_VBLNK_LST) {
 				gb->ppu.mode = OAM;
 				io_map[LY] = 0;
+				gb->ppu.skip_frame = false;
+				gb->ppu.done_frame = true;
 			}
-
-			check_lyc_eq_ly(gb);
-			update_stat();
 		}
 		break;
 	}
@@ -115,7 +203,8 @@ void ppu_step(struct GameBoy *gb, int dots)
 		io_map[LYC]);
 
 	if (prev_ln != io_map[LY])
-		fprintf(stderr, "\n\n");
+		check_lyc_eq_ly(gb);
 
-	return;
+	if (prev_mode != gb->ppu.mode)
+		update_stat(gb);
 }

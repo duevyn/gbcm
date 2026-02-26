@@ -1,9 +1,10 @@
 #include "io.h"
 #include "GameBoy.h"
 #include <stdio.h>
+#include <string.h>
 #include "logger.h"
 
-//#define fprintf(stderr, ...) ((void)0)
+#define fprintf(stderr, ...) ((void)0)
 extern inline void io_req_interrupt(enum io_interrupt intrp);
 
 static uint32_t tima_acc;
@@ -94,12 +95,28 @@ void io_wr(struct GameBoy *gb, uint16_t addr, uint8_t data)
 	case LCDC:
 		prev_on = (io_map[LCDC] & 0x80);
 		cur_on = (data & 0x80);
-		if (!prev_on && (prev_on ^ cur_on)) { //off to on
-			io_map[LY] = 0;
-			gb->ppu.mode = OAM;
-			gb->ppu.ly_dots = 0;
-		}
 		io_map[LCDC] = data;
+
+		bool switch_on = !prev_on && (prev_on ^ cur_on);
+		bool switch_off = prev_on && (prev_on ^ cur_on);
+
+		if (switch_on || switch_off) {
+			io_map[LY] = 0;
+			gb->ppu.ly_dots = 0;
+			if (switch_on) {
+				gb->ppu.mode = OAM;
+				io_map[LCDC] |= 0x80;
+				gb->ppu.skip_frame = true;
+			} else {
+				gb->ppu.mode = HBLNK;
+				io_map[LCDC] &= ~0x80;
+				memset(gb->ppu.framebuffer, 0xFFFFFFFF,
+				       sizeof(gb->ppu.framebuffer));
+			}
+
+			io_map[STAT] &= ~0x03;
+			io_map[STAT] |= (gb->ppu.mode & 0x03);
+		}
 		break;
 
 	case STAT:
