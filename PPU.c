@@ -40,36 +40,61 @@ void check_lyc_eq_ly(struct GameBoy *gb)
 
 static inline void render_bg_wndw(struct PPU *ppu)
 {
-	bool sign_addr_md;
-	uint8_t tl_id, hi_byte, lo_byte, hi_bit, lo_bit, bit, color, shade;
-	uint16_t tl_ind, by_ind;
+	uint8_t tl_id, tl_mp_row, tl_mp_col, tl_data_row, color, shade;
+	uint8_t hi_byte, lo_byte, hi_bit, lo_bit, bit;
+	uint16_t tl_mp_ind, tl_mp_addr, by_ind;
 
-	uint16_t bg_tl_mp = (0x08 & io_map[LCDC]) ? 0x1C00 : 0x1800;
-	uint16_t bg_map_addr = (io_map[LY] / 8) * 32 + bg_tl_mp;
-	uint8_t tl_row_offset = (io_map[LY] % 8) * 2;
+	uint8_t ln = io_map[LY];
+	uint8_t lcdc = io_map[LCDC];
+
+	uint16_t bg_tl_map_addr = (0x08 & lcdc) ? 0x1C00 : 0x1800;
+	uint16_t wn_tl_map_addr = (0x40 & lcdc) ? 0x1C00 : 0x1800;
+
+	bool draw_wn = ((ln >= io_map[WY]) && ((lcdc & 0x21) == 0x21));
+	int16_t wn_x = io_map[WX] - 7;
+
+	bool sign_addr_md = !(0x10 & lcdc);
+	bool inc_wndw_ly = false;
 
 	// It is Ok to refetch tile 8 times instead of holding tile and
 	// complicating logic because emulation loop is typcially under
 	// 0.5 ms and we render once ever 16.742 seconds.
-	for (int x = 0; x < 160; x++) {
-		tl_id = ppu->vram[bg_map_addr + (x / 8)];
-		by_ind = tl_id * 16 + tl_row_offset;
+	for (int i = 0; i < 160; i++) {
+		if (!(draw_wn && (i >= wn_x))) {
+			// uint8_t built in mod 256
+			tl_mp_row = ln + io_map[SCY];
+			tl_mp_col = i + io_map[SCX];
+			tl_mp_addr = bg_tl_map_addr;
+			tl_data_row = tl_mp_row % 8;
+		} else {
+			inc_wndw_ly = true;
+			tl_mp_row = (ppu->window_ly);
+			tl_mp_col = i - wn_x;
+			tl_mp_addr = wn_tl_map_addr;
+			tl_data_row = ppu->window_ly % 8;
+		}
 
-		sign_addr_md = !(0x10 & io_map[LCDC]);
+		tl_mp_ind = tl_mp_addr + (tl_mp_row / 8) * 32 + tl_mp_col / 8;
+		tl_id = ppu->vram[tl_mp_ind];
+		by_ind = tl_id * 16 + tl_data_row * 2;
+
 		if (sign_addr_md && (tl_id <= 127))
 			by_ind += 0x1000;
 
 		lo_byte = ppu->vram[by_ind];
 		hi_byte = ppu->vram[by_ind + 1];
-		bit = (7 - (x % 8));
+		bit = (7 - (tl_mp_col % 8));
 		lo_bit = (lo_byte >> bit) & 1;
 		hi_bit = (hi_byte >> bit) & 1;
 
 		color = (hi_bit << 1) | lo_bit;
-		bg_line_colors[x] = color;
+		bg_line_colors[i] = color;
 		shade = (io_map[BGP] >> (color * 2)) & 0x03;
-		ppu->framebuffer[io_map[LY] * 160 + x] = ppu_colors[shade];
+		ppu->framebuffer[ln * 160 + i] = ppu_colors[shade];
 	}
+
+	if (inc_wndw_ly)
+		ppu->window_ly++;
 }
 
 static inline void render_sprites(struct PPU *ppu)
@@ -77,16 +102,21 @@ static inline void render_sprites(struct PPU *ppu)
 	if (!(io_map[LCDC] & 0x02))
 		return;
 
-	uint8_t hi_byte, lo_byte, hi_bit, lo_bit, color;
+	uint8_t hi_byte, lo_byte, hi_bit, lo_bit, bit;
+	uint8_t x_pos, y_pos, tl_idx, flags, row, lcd_x;
+	uint8_t color, shade, pal_reg;
+	uint16_t addr;
+
+	bool isCovered, x_flipped, y_flipped;
 	uint8_t line = io_map[LY];
 	int8_t height = (io_map[LCDC] & 0x04) ? 16 : 8;
 
 	uint8_t count = 0;
 	for (int i = 0; i < 40 && count < 10; i++) {
-		uint8_t y_pos = ppu->oam[i * 4];
-		uint8_t x_pos = ppu->oam[i * 4 + 1];
-		uint8_t tile_idx = ppu->oam[i * 4 + 2];
-		uint8_t flags = ppu->oam[i * 4 + 3];
+		y_pos = ppu->oam[i * 4];
+		x_pos = ppu->oam[i * 4 + 1];
+		tl_idx = ppu->oam[i * 4 + 2];
+		flags = ppu->oam[i * 4 + 3];
 
 		uint8_t sprite_top = y_pos - 16;
 		if (line < sprite_top || ((line >= sprite_top + height)))
@@ -95,38 +125,38 @@ static inline void render_sprites(struct PPU *ppu)
 		count++;
 
 		if (height == 16)
-			tile_idx &= 0xFE;
+			tl_idx &= 0xFE;
 
-		uint8_t row = line - sprite_top;
-		bool y_flipped = flags & 0x40;
+		row = line - sprite_top;
+		y_flipped = flags & 0x40;
 		row = y_flipped ? height - 1 - row : row;
 
-		uint16_t addr = (tile_idx * 16) + (row * 2);
+		addr = (tl_idx * 16) + (row * 2);
 		lo_byte = ppu->vram[addr];
 		hi_byte = ppu->vram[addr + 1];
 
-		uint8_t pal_reg = (flags & 0x10) ? io_map[OBP1] : io_map[OBP0];
+		pal_reg = (flags & 0x10) ? io_map[OBP1] : io_map[OBP0];
 
-		for (int bit = 7; bit >= 0; bit--) {
-			uint8_t x_coord = x_pos - 8 + (7 - bit);
+		for (int i = 7; i >= 0; i--) {
+			lcd_x = x_pos - 8 + (7 - i);
 
-			if (x_coord < 0 || x_coord >= 160)
+			if (lcd_x < 0 || lcd_x >= 160)
 				continue;
 
-			bool x_flipped = (flags & 0x20);
-			bit = x_flipped ? 7 - bit : bit;
+			x_flipped = (flags & 0x20);
+			bit = x_flipped ? 7 - i : i;
 
 			lo_bit = (lo_byte >> bit) & 1;
 			hi_bit = (hi_byte >> bit) & 1;
 
 			color = (hi_bit << 1) | lo_bit;
-			bool isCovered = (flags & 0x80) &&
-					 bg_line_colors[x_coord] != 0;
+			isCovered = (flags & 0x80) &&
+				    bg_line_colors[lcd_x] != 0;
 			if (!color || isCovered)
 				continue;
 
-			uint8_t shade = (pal_reg >> (color * 2)) & 0x03;
-			ppu->framebuffer[line * 160 + x_coord] =
+			shade = (pal_reg >> (color * 2)) & 0x03;
+			ppu->framebuffer[line * 160 + lcd_x] =
 				ppu_colors[shade];
 		}
 	}
@@ -137,6 +167,7 @@ void render_scanline(struct PPU *ppu)
 	render_bg_wndw(ppu);
 	render_sprites(ppu);
 }
+
 void ppu_step(struct GameBoy *gb, int dots)
 {
 	if ((io_map[LCDC] & 0x80) == 0) {
@@ -191,9 +222,9 @@ void ppu_step(struct GameBoy *gb, int dots)
 		break;
 	}
 
-	fprintf(stderr, "--- %s (ly=%d: ly_dots=%d, lyc=%d)\n",
+	fprintf(stderr, "--- %s (ly=%d: ly_dots=%d, stat=0x%04x)\n",
 		ModeNames[gb->ppu.mode], io_map[LY], gb->ppu.ly_dots,
-		io_map[LYC]);
+		io_map[STAT]);
 
 	if (prev_ln != io_map[LY])
 		check_lyc_eq_ly(gb);
