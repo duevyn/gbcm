@@ -124,72 +124,42 @@ void render(struct GameBoy *gb)
 	SDL_RenderPresent(renderer);
 }
 
-void printTiles(struct GameBoy *gb)
-{
-	int data = 0x8000;
-	int map = 0x9800;
-
-	gb->ppu.mode = HBLNK;
-
-	for (int i = 0; i < 32; i++) {
-		for (int j = 0; j < 32; j++) {
-			fprintf(stderr, "%02x ",
-				bus_read(gb, map + i * 32 + j));
-		}
-		fprintf(stderr, "  -> off: %04x, addr: %04x\n", i * 32,
-			map + i * 32 - 0x8000);
-	}
-	fprintf(stderr, "\nLCDC: %08b\n", io_map[LCDC]);
-}
-
 int main(int argc, char *argv[])
 {
-	fprintf(stderr, "MS per frame %06f ms\n\n", NS_PER_FRAME / 1000000.0f);
 	struct GameBoy gb = { 0 };
 	gb_loadrom(&gb, argv[1]);
 	init_sdl();
-	int running = 1;
 	log_init("cpu_log.txt");
-	fprintf(logfile, "JPB 0x%02x, JPD 0x%02x\n\n", JOYPAD_BUTTONS,
-		JOYPAD_DPAD);
 	log_cpu_state(&gb);
-	uint64_t ms_tot = 0;
+
+	double ms_tot = 0;
+	uint64_t frames = 0;
+
+	int running = 1;
+	uint64_t start = SDL_GetTicksNS();
+	uint64_t next_frame_time = start;
 
 	while (running) {
-		uint64_t frame_start = SDL_GetTicksNS();
+		next_frame_time += NS_PER_FRAME;
 		hndlevnt(&running);
 		gb_emulate(&gb);
-
-		double emTime = (SDL_GetTicksNS() - frame_start) / 1000000.0;
-
-		fprintf(stderr, "time emulating: %lf ms ", emTime);
-
-		uint64_t delta_t = SDL_GetTicksNS() - frame_start;
-		if (delta_t < NS_PER_FRAME - 1000000)
-			SDL_DelayNS(NS_PER_FRAME - 1000000 - delta_t);
-
-		double wakeTime = (SDL_GetTicksNS() - frame_start) / 1000000.0;
-		fprintf(stderr, "-- aftr wakeup: %lf ms ", wakeTime);
 		render(&gb);
-		double rendTime =
-			((SDL_GetTicksNS() - frame_start) / 1000000.0) -
-			wakeTime;
-		fprintf(stderr, "-- render time: %lf ms ", rendTime);
 
-		while ((SDL_GetTicksNS() - frame_start) < NS_PER_FRAME) {
+		uint64_t now = SDL_GetTicksNS();
+
+		if (now < next_frame_time - 1000000)
+			SDL_DelayNS(next_frame_time - now - 1000000);
+
+		frames++;
+		while (SDL_GetTicksNS() < next_frame_time) {
 		}
-		fprintf(stderr, "-- after delay %lf ms %lu\n",
-			(SDL_GetTicksNS() - frame_start) / 1000000.0,
-			gb.cpu.dcnt / 70224);
-		//if ((gb.cpu.dcnt / 70224) >= 3038)
-		//	running = 0;
 	}
-	ms_tot = (SDL_GetTicksNS() / 1000000.0);
-	fprintf(stderr, "\ntotal time: %f seconds\n\n", ms_tot / 1000.0);
+	ms_tot = ((SDL_GetTicksNS() - start));
 
-	printTiles(&gb);
-	fprintf(stderr, "\nTAC %08b, cnt %lu \n", bus_read(&gb, 0xFF07),
-		gb.cpu.cnt);
+	fprintf(stderr, "\nframes: %lu\ntotal time: %.12lf seconds,\n", frames,
+		ms_tot / 1.0E9);
+	fprintf(stderr, "expected time: %.12lf seconds\n\n",
+		NS_PER_FRAME / 1.0E9 * frames);
 
 	log_close();
 	SDL_DestroyRenderer(renderer);

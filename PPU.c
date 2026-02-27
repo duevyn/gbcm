@@ -108,10 +108,10 @@ static inline void render_sprites(struct PPU *ppu)
 	uint8_t hi_byte, lo_byte, hi_bit, lo_bit, bit;
 	uint8_t oam_i, x_pos, y_pos, tl_idx, flags, row;
 	uint8_t color, shade, pal_reg;
-	uint16_t addr;
-	int16_t lcd_x, sprite_top;
-
 	bool isCovered, x_flipped, y_flipped;
+	int16_t lcd_x, sprite_top;
+	uint16_t addr;
+
 	int16_t line = io_map[LY];
 	int8_t height = (io_map[LCDC] & 0x04) ? 16 : 8;
 
