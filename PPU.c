@@ -38,44 +38,38 @@ void check_lyc_eq_ly(struct GameBoy *gb)
 	io_map[STAT] &= ~0x04;
 }
 
-static inline void render_background(struct PPU *ppu)
+static inline void render_bg_wndw(struct PPU *ppu)
 {
-	uint8_t hi_byte, lo_byte, hi_bit, lo_bit, color;
+	bool sign_addr_md;
+	uint8_t tl_id, hi_byte, lo_byte, hi_bit, lo_bit, bit, color, shade;
+	uint16_t tl_ind, by_ind;
 
-	uint8_t line = io_map[LY];
-	uint16_t tl_map_offset = !(0x08 & io_map[LCDC]) ? 0x1800 : 0x1C00;
-	uint16_t tl_map_addr = (line / 8) * 32 + tl_map_offset;
-	uint16_t px_ind = 160 * line;
-	uint8_t tl_row = line % 8;
+	uint16_t bg_tl_mp = (0x08 & io_map[LCDC]) ? 0x1C00 : 0x1800;
+	uint16_t bg_map_addr = (io_map[LY] / 8) * 32 + bg_tl_mp;
+	uint8_t tl_row_offset = (io_map[LY] % 8) * 2;
 
-	uint16_t sign_addr_offset = 0;
+	// It is Ok to refetch tile 8 times instead of holding tile and
+	// complicating logic because emulation loop is typcially under
+	// 0.5 ms and we render once ever 16.742 seconds.
+	for (int x = 0; x < 160; x++) {
+		tl_id = ppu->vram[bg_map_addr + (x / 8)];
+		by_ind = tl_id * 16 + tl_row_offset;
 
-	for (int i = 0; i < 20; i++) {
-		uint8_t tl_id = ppu->vram[tl_map_addr + i];
-		uint16_t tl_ind = tl_id * 16 + tl_row * 2;
+		sign_addr_md = !(0x10 & io_map[LCDC]);
+		if (sign_addr_md && (tl_id <= 127))
+			by_ind += 0x1000;
 
-		bool signed_addr_mode = !(0x10 & io_map[LCDC]);
-		if (signed_addr_mode && (tl_id <= 127))
-			tl_ind += 0x1000;
+		lo_byte = ppu->vram[by_ind];
+		hi_byte = ppu->vram[by_ind + 1];
+		bit = (7 - (x % 8));
+		lo_bit = (lo_byte >> bit) & 1;
+		hi_bit = (hi_byte >> bit) & 1;
 
-		lo_byte = ppu->vram[tl_ind];
-		hi_byte = ppu->vram[tl_ind + 1];
-
-		for (int bit = 7; bit >= 0; bit--) {
-			lo_bit = (lo_byte >> bit) & 1;
-			hi_bit = (hi_byte >> bit) & 1;
-			color = (hi_bit << 1) | lo_bit;
-			bg_line_colors[px_ind % 160] = color;
-			uint8_t shade = (io_map[BGP] >> (color * 2)) & 0x03;
-			ppu->framebuffer[px_ind++] = ppu_colors[shade];
-		}
+		color = (hi_bit << 1) | lo_bit;
+		bg_line_colors[x] = color;
+		shade = (io_map[BGP] >> (color * 2)) & 0x03;
+		ppu->framebuffer[io_map[LY] * 160 + x] = ppu_colors[shade];
 	}
-}
-
-static inline void render_window(struct PPU *ppu)
-{
-	if (!(io_map[LCDC] & 0x20))
-		return;
 }
 
 static inline void render_sprites(struct PPU *ppu)
@@ -140,11 +134,9 @@ static inline void render_sprites(struct PPU *ppu)
 
 void render_scanline(struct PPU *ppu)
 {
-	render_background(ppu);
-	render_window(ppu);
+	render_bg_wndw(ppu);
 	render_sprites(ppu);
 }
-
 void ppu_step(struct GameBoy *gb, int dots)
 {
 	if ((io_map[LCDC] & 0x80) == 0) {
@@ -191,6 +183,7 @@ void ppu_step(struct GameBoy *gb, int dots)
 			if (io_map[LY] > LY_VBLNK_LST) {
 				gb->ppu.mode = OAM;
 				io_map[LY] = 0;
+				gb->ppu.window_ly = 0;
 				gb->ppu.skip_frame = false;
 				gb->ppu.done_frame = true;
 			}
