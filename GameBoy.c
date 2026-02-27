@@ -58,7 +58,7 @@ void gb_emulate(struct GameBoy *gb)
 
 		if (!gb->dma.active && (itr_ticks = hndl_interrupts(gb))) {
 			ppu_step(gb, itr_ticks);
-			io_timer_step(ticks);
+			io_timer_step(itr_ticks);
 		}
 
 		tot_ticks += ticks + itr_ticks;

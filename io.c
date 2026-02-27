@@ -103,6 +103,7 @@ void io_wr(struct GameBoy *gb, uint16_t addr, uint8_t data)
 		if (switch_on || switch_off) {
 			io_map[LY] = 0;
 			gb->ppu.ly_dots = 0;
+			gb->ppu.window_ly = 0;
 			if (switch_on) {
 				gb->ppu.mode = OAM;
 				io_map[LCDC] |= 0x80;

@@ -3,6 +3,7 @@
 #include "logger.h"
 #include "io.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 #define fprintf(stderr, ...) ((void)0)
 
@@ -18,15 +19,17 @@ static const uint32_t ppu_colors[4] = {
 	//0xFF9BBC0F, 0xFF8BAC0F, 0xFF306230, 0xFF0F380F
 };
 
+static uint8_t sprites_pend[10];
+static uint8_t sprite_cnt;
 static uint8_t bg_line_colors[160];
 
-void update_stat(struct GameBoy *gb)
+static inline void update_stat(struct GameBoy *gb)
 {
 	io_map[STAT] &= ~0x03;
 	io_map[STAT] |= (gb->ppu.mode & 0x03);
 }
 
-void check_lyc_eq_ly(struct GameBoy *gb)
+static inline void check_lyc_eq_ly(struct GameBoy *gb)
 {
 	fprintf(stderr, "\n\n");
 	if (io_map[LY] == io_map[LYC]) {
@@ -103,26 +106,25 @@ static inline void render_sprites(struct PPU *ppu)
 		return;
 
 	uint8_t hi_byte, lo_byte, hi_bit, lo_bit, bit;
-	uint8_t x_pos, y_pos, tl_idx, flags, row, lcd_x;
+	uint8_t oam_i, x_pos, y_pos, tl_idx, flags, row;
 	uint8_t color, shade, pal_reg;
 	uint16_t addr;
+	int16_t lcd_x, sprite_top;
 
 	bool isCovered, x_flipped, y_flipped;
-	uint8_t line = io_map[LY];
+	int16_t line = io_map[LY];
 	int8_t height = (io_map[LCDC] & 0x04) ? 16 : 8;
 
-	uint8_t count = 0;
-	for (int i = 0; i < 40 && count < 10; i++) {
-		y_pos = ppu->oam[i * 4];
-		x_pos = ppu->oam[i * 4 + 1];
-		tl_idx = ppu->oam[i * 4 + 2];
-		flags = ppu->oam[i * 4 + 3];
+	for (int i = sprite_cnt - 1; i >= 0; i--) {
+		oam_i = sprites_pend[i];
+		y_pos = ppu->oam[oam_i * 4];
+		x_pos = ppu->oam[oam_i * 4 + 1];
+		tl_idx = ppu->oam[oam_i * 4 + 2];
+		flags = ppu->oam[oam_i * 4 + 3];
 
-		uint8_t sprite_top = y_pos - 16;
+		sprite_top = y_pos - 16;
 		if (line < sprite_top || ((line >= sprite_top + height)))
 			continue;
-
-		count++;
 
 		if (height == 16)
 			tl_idx &= 0xFE;
@@ -137,14 +139,14 @@ static inline void render_sprites(struct PPU *ppu)
 
 		pal_reg = (flags & 0x10) ? io_map[OBP1] : io_map[OBP0];
 
-		for (int i = 7; i >= 0; i--) {
-			lcd_x = x_pos - 8 + (7 - i);
+		for (int j = 7; j >= 0; j--) {
+			lcd_x = x_pos - 8 + (7 - j);
 
 			if (lcd_x < 0 || lcd_x >= 160)
 				continue;
 
 			x_flipped = (flags & 0x20);
-			bit = x_flipped ? 7 - i : i;
+			bit = x_flipped ? 7 - j : j;
 
 			lo_bit = (lo_byte >> bit) & 1;
 			hi_bit = (hi_byte >> bit) & 1;
@@ -162,7 +164,37 @@ static inline void render_sprites(struct PPU *ppu)
 	}
 }
 
-void render_scanline(struct PPU *ppu)
+static inline uint8_t oam_search(struct PPU *ppu)
+{
+	if (!(io_map[LCDC] & 0x02))
+		return 0;
+
+	ppu->md3delay = io_map[SCX] % 8;
+	sprite_cnt = 0;
+
+	int16_t sprite_top;
+	uint8_t y_pos;
+
+	uint8_t result = 0;
+	uint8_t ln = io_map[LY];
+	uint8_t height = (io_map[LCDC] & 0x04) ? 16 : 8;
+
+	for (int i = 0; i < 40 && sprite_cnt < 10; i++) {
+		y_pos = ppu->oam[i * 4];
+		sprite_top = y_pos - 16;
+		if (ln >= sprite_top && ln < sprite_top + height) {
+			sprites_pend[sprite_cnt++] = i;
+			if (ppu->oam[i * 4 + 1] > 0)
+				ppu->md3delay += 6;
+			else
+				ppu->md3delay += 11;
+		}
+	}
+
+	return result;
+}
+
+static inline void render_scanline(struct PPU *ppu)
 {
 	render_bg_wndw(ppu);
 	render_sprites(ppu);
@@ -182,7 +214,8 @@ void ppu_step(struct GameBoy *gb, int dots)
 	case (OAM): //mode 2
 		if (gb->ppu.ly_dots >= OAM_DOTS) {
 			gb->ppu.mode = DRAW;
-			gb->ppu.md3delay = 0; //TODO: calc mode 3 delay
+			//TODO: calc mode 3 delay
+			gb->ppu.md3delay = oam_search(&gb->ppu);
 		}
 		break;
 	case (DRAW): //mode 3
