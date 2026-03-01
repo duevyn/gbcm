@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+
 enum KiB_sz {
 	KiB = 1024,
 	KiB8 = KiB << 3,
@@ -75,82 +76,6 @@ cart_rd mbc_rd
 cart_wr mbc_wr
 	[0x1C] = { [0] = mbc0_wr, [1] = mbc1_wr, [2] = mbc1_wr, [3] = mbc1_wr };
 
-uint8_t cart_read(struct Cartridge *crt, uint16_t addr)
-{
-	if (addr < 0x4000)
-		return crt->rom[addr];
-
-	return mbc_rd[crt->type](crt, addr);
-
-	uint8_t bank = crt->rom_bk & 0x1F;
-	if (!bank)
-		bank = 1;
-
-	//ONLY works bc Tecmo is 256Kib, so it only needs 4 bits
-	//0x10 for a 256KiB rom does not translate to 0, but since only 4
-	//bits are needed for 16 banks, it maps to bank 0;
-
-	/*
-	if (!bank) {
-		fprintf(logfile,
-			"ALERT: addr: 0x%04x mapped to bank 0: rom_bk 0x%02x\n",
-			addr, crt->rom_bk);
-		return crt->rom[addr];
-	}
-        */
-
-	//bank &= 0x0F;
-	uint8_t reg = bank & 0x0F;
-	if (!reg) {
-		fprintf(logfile,
-			"ALERT: addr: 0x%04x mapped to bank 0: rom_bk 0x%02x\n",
-			addr, crt->rom_bk);
-		//return crt->rom[addr];
-	}
-	uint32_t addr_b = reg * 0x4000 + (addr - 0x4000);
-	return crt->rom[addr_b];
-}
-
-void cart_write(struct Cartridge *crt, uint16_t addr, uint8_t data)
-{
-	uint8_t prev;
-	switch (crt->type) {
-	case (MBC1):
-		if (addr <= 0x1FFF) {
-			crt->ram_prms = ((data & 0x0A) == 0x0A);
-		} else if (addr <= 0x3FFF) {
-			prev = crt->rom_bk;
-			//crt->rom_bk = (crt->rom_bk & 0xE0) | (data & 0x1F);
-			//if (!(crt->rom_bk & 0x1F))
-			//	crt->rom_bk |= 1;
-			crt->rom_bk = data;
-			if (data > 0x0F)
-				fprintf(stderr,
-					"bank: addr 0x%04x, data 0x%02x, result 0x%02x\n",
-					addr, data, crt->rom_bk);
-		} else if (addr <= 0x5FFF) {
-			fprintf(stderr,
-				"mode: %d, addr 0x%04x, data 0x%02x, rom_bk 0x%02x, ram_bk 0x%02x",
-				crt->bk_md, addr, data, crt->rom_bk,
-				crt->ram_bk);
-			if (!crt->bk_md) {
-				prev = crt->rom_bk;
-				crt->rom_bk = (((data & 0x03) << 5) ||
-					       (crt->rom_bk & 0x1F));
-				// crt->rom_bk = (data & 0x60);
-			} else {
-				prev = crt->rom_bk;
-				crt->ram_bk = data;
-			}
-		} else if (addr <= 0x7FFF) {
-		}
-
-		break;
-	default:
-		break;
-	}
-}
-
 void cart_load(struct Cartridge *crt, const char *path)
 {
 	int fd = open(path, O_RDONLY);
@@ -159,33 +84,32 @@ void cart_load(struct Cartridge *crt, const char *path)
 		exit(EXIT_FAILURE);
 	}
 
-	crt->rom_bk = 0;
-	crt->ram_bk = 0;
-	crt->bk_md = 0;
-
 	uint8_t header[0x150];
 	if (!read(fd, header, 0x150)) {
 		exit(EXIT_FAILURE);
 	}
 
 	crt->type = header[CART_TYPE];
-
 	if (!mbc_rd[crt->type]) {
 		fprintf(stderr, "ERROR: Cartridge type 0x%02x not supported\n",
 			crt->type);
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	crt->rom_sz = (KiB * 32) << header[ROM_SZ];
-	crt->n_rom_bk = crt->rom_sz >> 14;
-	crt->n_rg_bits = 63 - __builtin_clzll(crt->n_rom_bk);
 	crt->rom = malloc(crt->rom_sz);
-	memcpy(crt->rom, header, 0x150);
 
 	if (!read(fd, &crt->rom[0x150], crt->rom_sz - 0x150)) {
 		perror("Did not read expected bytes\n");
 		exit(EXIT_FAILURE);
 	}
+
+	memcpy(crt->rom, header, 0x150);
+	crt->rom_bk = 0;
+	crt->ram_bk = 0;
+	crt->bk_md = 0;
+	crt->n_rom_bk = crt->rom_sz >> 14;
+	crt->n_rg_bits = 63 - __builtin_clzll(crt->n_rom_bk);
 
 	const int ram_sz[] = { 0, 0, 8 * KiB, 32 * KiB, 128 * KiB, 64 * KiB };
 	switch (crt->type) {
