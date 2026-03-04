@@ -4,8 +4,12 @@
 #include "logger.h"
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
-#define fprintf(stderr, ...) ((void)0)
+uint64_t frames = 0;
+time_t lst_save;
+
+//#define fprintf(stderr, ...) ((void)0)
 uint8_t hndl_interrupts(struct GameBoy *gb)
 {
 	uint8_t pending = (io_map[IF] & io_ie);
@@ -27,9 +31,9 @@ uint8_t hndl_interrupts(struct GameBoy *gb)
 	bus_write(gb, --gb->cpu.sp, gb->cpu.pc & 0xFF);
 
 	uint16_t pc = 0x40 + (8 * bit);
-	fprintf(stderr,
-		"-- Jump to 0x%04x (pending %b, bit %d, if %b, ret pc 0x%04x)\n\n\n\n",
-		pc, pending, bit, io_map[IF], gb->cpu.pc);
+	//fprintf(stderr,
+	//	"-- Jump to 0x%04x (pending %b, bit %d, if %b, ret pc 0x%04x)\n\n\n\n",
+	//	pc, pending, bit, io_map[IF], gb->cpu.pc);
 	gb->cpu.pc = pc;
 
 	return 20; //5 M cycles
@@ -39,6 +43,7 @@ void gb_emulate(struct GameBoy *gb)
 {
 	int ticks = 0, tot_ticks = 0, itr_ticks = 0;
 	gb->ppu.done_frame = false;
+	gb->ppu.dots = 0;
 	bool logframe = false;
 	do {
 		/*
@@ -48,10 +53,11 @@ void gb_emulate(struct GameBoy *gb)
 		}
                 */
 
-		if (!gb->dma.active)
+		if (!gb->dma.active) {
 			ticks = cpu_step(gb);
-		else
+		} else {
 			ticks = dma_step(gb);
+		}
 
 		ppu_step(gb, ticks);
 		io_timer_step(ticks);
@@ -64,17 +70,29 @@ void gb_emulate(struct GameBoy *gb)
 		tot_ticks += ticks + itr_ticks;
 		if (tot_ticks > DOTS_PER_FRAME && !gb->ppu.done_frame)
 			logframe = true;
-	} while (!gb->ppu.done_frame);
-	if (logframe)
-		fprintf(stderr, "\n\n\nPPU catch up: %d total ticks\n\n\n\n",
-			tot_ticks);
+	} while (!gb->ppu.done_frame && gb->running);
+
+	frames++;
+
+	if (gb->crt.ram_dirty && (time(NULL) - lst_save > 5)) {
+		crt_sv_ram(&gb->crt);
+		lst_save = time(NULL);
+	}
+
+	//if (logframe) {
+	//	fprintf(stderr,
+	//		"\n\n\n%lu PPU catch up: %d total ticks: ppu dots %d\n\n\n\n",
+	//		frames, tot_ticks, gb->ppu.dots);
+	//}
 }
 
 void gb_loadrom(struct GameBoy *gb, const char *path)
 {
-	cart_load(&gb->crt, path);
+	crt_load(&gb->crt, path);
 	io_init();
 	memset(gb->ppu.framebuffer, 0xFFFFFFFF, sizeof(gb->ppu.framebuffer));
+	gb->running = true;
+	lst_save = time(NULL);
 
 	gb->ppu.mode = OAM;
 

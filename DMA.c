@@ -21,9 +21,9 @@ uint8_t dma_step(GameBoy *gb)
 	}
 
 	uint16_t src = (gb->dma.value << 8) + gb->dma.cnt;
-	gb->ppu.oam[gb->dma.cnt] = bus_read(gb, src);
+	gb->ppu.oam[gb->dma.cnt++] = bus_read(gb, src);
 
-	if (gb->dma.cnt++ >= 160)
+	if (gb->dma.cnt >= 160)
 		gb->dma.active = false;
 
 	return 4;

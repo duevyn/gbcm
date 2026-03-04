@@ -2,9 +2,12 @@
 #include "logger.h"
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 enum KiB_sz {
 	KiB = 1024,
@@ -16,6 +19,45 @@ enum KiB_sz {
 	MiB = KiB << 10
 };
 
+static const char *dir = "gbcm_data";
+FILE *crt_mem = NULL;
+
+void load_mem(struct Cartridge *c)
+{
+	char path[27];
+	sprintf(path, "%s/%s", dir, c->titl);
+	struct stat st = { 0 };
+	if (stat(dir, &st) == -1) {
+		if (mkdir(dir, 0777) == -1) {
+			fprintf(stderr, "ERROR making path %s: ", dir);
+			perror("");
+			return;
+		}
+	}
+
+	if (!S_ISDIR(st.st_mode)) {
+		fprintf(stderr, "ERROR: path %s is not directory\n", dir);
+		return;
+	}
+
+	if ((crt_mem = fdopen(open(path, O_RDWR | O_CREAT), "r+"))) {
+		fread(c->ram, 1, c->ram_sz, crt_mem);
+		fprintf(stderr, "Loaded save data for %s\n", c->titl);
+	}
+}
+
+void crt_sv_ram(struct Cartridge *c)
+{
+	if (!crt_mem)
+		return;
+
+	rewind(crt_mem);
+	fwrite(c->ram, sizeof(uint8_t), c->ram_sz, crt_mem);
+	fflush(crt_mem);
+	c->ram_dirty = false;
+	fprintf(stderr, "Saved data for  %s\n", c->titl);
+}
+
 uint8_t mbc0_rd(struct Cartridge *crt, uint16_t addr)
 {
 	return crt->rom[addr];
@@ -25,58 +67,111 @@ void mbc0_wr(struct Cartridge *crt, uint16_t addr, uint8_t data)
 {
 }
 
-uint8_t mbc1_rd(struct Cartridge *crt, uint16_t addr)
+uint8_t mbc1_rd(struct Cartridge *c, uint16_t addr)
 {
-	if (crt->bk_md && crt->rom_sz >= MiB) {
+	if (c->bk_md && c->rom_sz >= MiB) {
 		fprintf(stderr, "Bank Mode 1 not supported\n");
 		exit(EXIT_FAILURE);
 	}
 
 	if (addr < 0x4000)
-		return crt->rom[addr];
+		return c->rom[addr];
 
 	uint8_t bank;
-	if (crt->ram_prms && 0xA000 <= addr && addr <= 0xBFFF) {
-		bank = crt->rom_sz >= MiB ? 0 : crt->ram_bk;
-		return crt->ram[((addr - 0xA000) + (bank * KiB8)) % KiB8];
+	if (c->ram_prms && 0xA000 <= addr && addr <= 0xBFFF) {
+		bank = c->rom_sz >= MiB ? 0 : c->ram_bk;
+		return c->ram[((addr - 0xA000) + (bank * KiB8)) % c->ram_sz];
 	}
 
-	bank = crt->rom_bk & 0x1F;
+	bank = c->rom_bk & 0x1F;
 
 	if (!bank)
 		bank = 1;
 
-	if (crt->rom_sz <= KiB256)
-		bank &= (crt->n_rom_bk - 1);
-	else if (crt->rom_sz >= MiB)
-		bank |= (crt->ram_bk << 5);
+	if (c->rom_sz <= KiB256)
+		bank &= (c->n_rom_bk - 1);
+	else if (c->rom_sz >= MiB)
+		bank |= (c->ram_bk << 5);
 
-	return crt->rom[bank * 0x4000 + (addr - 0x4000)];
+	return c->rom[bank * 0x4000 + (addr - 0x4000)];
 }
 
-void mbc1_wr(struct Cartridge *crt, uint16_t addr, uint8_t data)
+void mbc1_wr(struct Cartridge *c, uint16_t addr, uint8_t data)
 {
 	if (addr <= 0x1FFF) {
-		crt->ram_prms = ((data & 0x0A) == 0x0A);
+		c->ram_prms = ((data & 0x0A) == 0x0A);
 	} else if (addr <= 0x3FFF) {
-		crt->rom_bk = data;
+		c->rom_bk = data;
 	} else if (addr <= 0x5FFF) {
-		crt->ram_bk = data & 0x03;
+		c->ram_bk = data & 0x03;
 	} else if (addr <= 0x7FFF) {
-		crt->bk_md = data;
-	} else if (crt->ram_prms && 0xA000 <= addr && addr <= 0xBFFF) {
-		uint8_t bank = crt->rom_sz >= MiB ? 0 : crt->ram_bk;
-		crt->ram[((addr - 0xA000) + (bank * KiB8)) % KiB8] = data;
+		c->bk_md = data;
+	} else if (c->ram_prms && 0xA000 <= addr && addr <= 0xBFFF) {
+		uint8_t bank = c->rom_sz >= MiB ? 0 : c->ram_bk;
+		c->ram[((addr - 0xA000) + (bank * KiB8)) % c->ram_sz] = data;
+		c->ram_dirty = true;
 	}
 }
 
-cart_rd mbc_rd
-	[0x1C] = { [0] = mbc0_rd, [1] = mbc1_rd, [2] = mbc1_rd, [3] = mbc1_rd };
+uint8_t mbc3_rd(struct Cartridge *c, uint16_t addr)
+{
+	if (addr < 0x4000)
+		return c->rom[addr];
 
-cart_wr mbc_wr
-	[0x1C] = { [0] = mbc0_wr, [1] = mbc1_wr, [2] = mbc1_wr, [3] = mbc1_wr };
+	uint8_t bank;
+	if (c->ram_prms && 0xA000 <= addr && addr <= 0xBFFF) {
+		bank = c->ram_bk & 0x03;
+		return c->ram[((addr - 0xA000) + (bank * KiB8)) % c->ram_sz];
+	}
 
-void cart_load(struct Cartridge *crt, const char *path)
+	bank = c->rom_bk & 0x7F;
+
+	if (!bank)
+		bank = 1;
+
+	return c->rom[bank * 0x4000 + (addr - 0x4000)];
+}
+
+void mbc3_wr(struct Cartridge *c, uint16_t addr, uint8_t data)
+{
+	if (addr <= 0x1FFF) {
+		c->ram_prms = ((data & 0x0A) == 0x0A);
+	} else if (addr <= 0x3FFF) {
+		c->rom_bk = data;
+	} else if (addr <= 0x5FFF) {
+		if (data <= 0x07)
+			c->ram_bk = data;
+		else
+			c->rtc = data;
+	} else if (addr <= 0x7FFF) {
+	} else if (c->ram_prms && 0xA000 <= addr && addr <= 0xBFFF) {
+		addr = ((addr - 0xA000) + (c->ram_bk * KiB8)) % c->ram_sz;
+		c->ram[addr] = data;
+		c->ram_dirty = true;
+	}
+}
+
+cart_rd mbc_rd[0x1C] = { [0x00] = mbc0_rd, [0x01] = mbc1_rd, [0x02] = mbc1_rd,
+			 [0x03] = mbc1_rd, [0x0F] = mbc3_rd, [0x10] = mbc3_rd,
+			 [0x11] = mbc3_rd, [0x12] = mbc3_rd, [0x13] = mbc3_rd };
+
+cart_wr mbc_wr[0x1C] = { [0x00] = mbc0_wr, [0x01] = mbc1_wr, [0x02] = mbc1_wr,
+			 [0x03] = mbc1_wr, [0x0F] = mbc3_wr, [0x10] = mbc3_wr,
+			 [0x11] = mbc3_wr, [0x12] = mbc3_wr, [0x13] = mbc3_wr };
+
+void crt_eject(struct Cartridge *c)
+{
+	free(c->rom);
+	if (crt_mem) {
+		crt_sv_ram(c);
+		fclose(crt_mem);
+		crt_mem = NULL;
+	}
+	if (c->ram)
+		free(c->ram);
+}
+
+void crt_load(struct Cartridge *crt, const char *path)
 {
 	int fd = open(path, O_RDONLY);
 	if (fd < 0) {
@@ -105,6 +200,8 @@ void cart_load(struct Cartridge *crt, const char *path)
 	}
 
 	memcpy(crt->rom, header, 0x150);
+	memcpy(crt->titl, &header[TITL], 16 * sizeof(char));
+	crt->titl[16] = '\0';
 	crt->rom_bk = 0;
 	crt->ram_bk = 0;
 	crt->bk_md = 0;
@@ -130,14 +227,13 @@ void cart_load(struct Cartridge *crt, const char *path)
 	case HuC1_RAM_BATTERY:
 		crt->ram_sz = ram_sz[header[RAM_SZ]];
 		crt->ram = malloc(crt->ram_sz);
+		load_mem(crt);
 		break;
-
 	default:
 		crt->ram_sz = 0;
 		crt->ram = NULL;
 		break;
 	}
-	Cartridge c = *crt;
-	fprintf(stderr, "rom %lu, ram %lu, type 0x%02x\n", crt->rom_sz / 1000,
-		crt->ram_sz, crt->type);
+	fprintf(stderr, "Opened %s: rom %lu, ram %lu, type 0x%02x\n", crt->titl,
+		crt->rom_sz / 1000, crt->ram_sz, crt->type);
 }

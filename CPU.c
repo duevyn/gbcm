@@ -6,7 +6,7 @@
 #include "io.h"
 #include "bus.h"
 #include "logger.h"
-//#define fprintf(stderr, ...) ((void)0)
+#define fprintf(stderr, ...) ((void)0)
 
 const char *const rgstr[] = { "B", "C", "D", "E", "H", "L", "[HL]", "A" };
 
@@ -2051,7 +2051,7 @@ struct instr optbl[256] = {
 	[0xD0] = { "RET NC 1,20/8", op_ret_NC, 1, { 20, 8 }, 0xD0 },
 	[0xD1] = { "POP DE 1,12", op_pop_DE, 1, { 12, 12 }, 0xD1 },
 	[0xD2] = { "JP NC,a16 3,16/12", op_jp_NC_a16, 3, { 16, 12 }, 0xD2 },
-	[0xD3] = { "ILLEGAL_D3 1,4", op_noop, 1, { 4, 4 }, 0xD3 },
+	[0xD3] = { "ILLEGAL_D3 1,4", NULL, 1, { 4, 4 }, 0xD3 },
 	[0xD4] = { "CALL NC,a16 3,24/12", op_call_NC_a16, 3, { 24, 12 }, 0xD4 },
 	[0xD5] = { "PUSH DE 1,16", op_push_DE, 1, { 16, 16 }, 0xD5 },
 	[0xD6] = { "SUB A,n8 2,8 Z1HC", op_sub_A_n8, 2, { 8, 8 }, 0xD6 },
@@ -2059,7 +2059,7 @@ struct instr optbl[256] = {
 	[0xD8] = { "RET C 1,20/8", op_ret_C, 1, { 20, 8 }, 0xD8 },
 	[0xD9] = { "RETI 1,16", op_reti, 1, { 16, 16 }, 0xD9 },
 	[0xDA] = { "JP C,a16 3,16/12", op_jp_C_a16, 3, { 16, 12 }, 0xDA },
-	[0xDB] = { "ILLEGAL_DB 1,4", op_noop, 1, { 4, 4 }, 0xDB },
+	[0xDB] = { "ILLEGAL_DB 1,4", NULL, 1, { 4, 4 }, 0xDB },
 	[0xDC] = { "CALL C,a16 3,24/12", op_call_C_a16, 3, { 24, 12 }, 0xDC },
 	[0xDD] = { "ILLEGAL_DD 1,4", NULL, 1, { 4, 4 }, 0xDD },
 	[0xDE] = { "SBC A,n8 2,8 Z1HC", op_sbc_A_n8, 2, { 8, 8 }, 0xDE },
@@ -2314,7 +2314,11 @@ int cpu_exec(struct GameBoy *gb)
 
 	if (!gb->cpu.instr->exec) {
 		fprintf(stderr, " !!! ERROR: NOT IMPLEMENTED\n\n");
-		exit(EXIT_FAILURE);
+
+		gb->running = false;
+		gb->error = true;
+
+		return 0;
 	}
 
 	uint8_t result = gb->cpu.instr->exec(gb);
@@ -2341,10 +2345,13 @@ int cpu_step(struct GameBoy *gb)
 	if (gb->cpu.halted)
 		return 4;
 
+	int result;
 	if (!gb->cpu.instr)
 		cpu_fetch(gb);
 
-	int result = cpu_exec(gb);
+	if (!(result = cpu_exec(gb)))
+		return result;
+
 	//log_cpu_state(gb); //gameboy doctor
 	cpu_fetch(gb);
 	return result;

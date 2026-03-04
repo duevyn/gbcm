@@ -5,13 +5,15 @@
 #include "PPU.h"
 #include "cartridge.h"
 #include "DMA.h"
+#include <stdbool.h>
 
 typedef struct GameBoy {
 	struct CPU cpu;
 	struct PPU ppu;
 	struct Cartridge crt;
 	struct DMA dma;
-
+	bool running;
+	bool error;
 	uint8_t wram[8192];
 	uint8_t hram[127];
 } GameBoy;

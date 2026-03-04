@@ -12,10 +12,11 @@ extern uint8_t io_ie;
 enum io_joypad_ctrl { JOYPAD_BUTTONS = 1 << 5, JOYPAD_DPAD = 1 << 4 };
 
 enum io_joypad {
-	START$DOWN = (1 << 3),
-	SELECT$UP = (1 << 2),
+	A$RIGHT = 1,
 	B$LEFT = (1 << 1),
-	A$RIGHT = (1 << 0)
+	SELECT$UP = (1 << 2),
+	START$DOWN = (1 << 3),
+	TAB = 0x0F,
 };
 
 struct GameBoy;

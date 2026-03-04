@@ -6,6 +6,7 @@
 #include "bus.h"
 #include "io.h"
 #include "logger.h"
+#include <errno.h>
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -18,7 +19,7 @@ void init_sdl()
 		SDL_Log("Error initializing SDL: %s\n", SDL_GetError());
 		exit(1);
 	}
-	if (!SDL_CreateWindowAndRenderer("Hello World", 160 * 7, 144 * 7,
+	if (!SDL_CreateWindowAndRenderer("gbcM", 160 * 4, 144 * 4,
 					 SDL_WINDOW_ALWAYS_ON_TOP, &window,
 					 &renderer)) {
 		SDL_Log("Couldn't create window and renderer: %s\n",
@@ -34,8 +35,8 @@ void init_sdl()
 	}
 }
 
-// Z = A, X = B, Backspace = Select, Enter = Start, ESC = quit
-void hndlevnt(int *running)
+// X = A, Z = B, Backspace = Select, Enter = Start, ESC = quit
+void hndlevnt(bool *running)
 {
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
@@ -46,10 +47,10 @@ void hndlevnt(int *running)
 
 		if (event.type == SDL_EVENT_KEY_DOWN) {
 			switch (event.key.key) {
-			case SDLK_Z: //A
+			case SDLK_X: //A
 				io_joypad_press(JOYPAD_BUTTONS, A$RIGHT);
 				break;
-			case SDLK_X: //B
+			case SDLK_Z: //B
 				io_joypad_press(JOYPAD_BUTTONS, B$LEFT);
 				break;
 			case SDLK_BACKSPACE: //Select
@@ -58,7 +59,6 @@ void hndlevnt(int *running)
 			case SDLK_RETURN: //Start
 				io_joypad_press(JOYPAD_BUTTONS, START$DOWN);
 				break;
-
 			case SDLK_RIGHT:
 				io_joypad_press(JOYPAD_DPAD, A$RIGHT);
 				break;
@@ -71,7 +71,9 @@ void hndlevnt(int *running)
 			case SDLK_DOWN:
 				io_joypad_press(JOYPAD_DPAD, START$DOWN);
 				break;
-
+			case SDLK_TAB:
+				io_joypad_press(JOYPAD_BUTTONS, TAB);
+				break;
 			case SDLK_ESCAPE:
 				*running = 0;
 				break;
@@ -80,10 +82,10 @@ void hndlevnt(int *running)
 			}
 		} else if (event.type == SDL_EVENT_KEY_UP) {
 			switch (event.key.key) {
-			case SDLK_Z:
+			case SDLK_X:
 				io_joypad_release(JOYPAD_BUTTONS, A$RIGHT);
 				break;
-			case SDLK_X:
+			case SDLK_Z:
 				io_joypad_release(JOYPAD_BUTTONS, B$LEFT);
 				break;
 			case SDLK_BACKSPACE:
@@ -92,7 +94,9 @@ void hndlevnt(int *running)
 			case SDLK_RETURN:
 				io_joypad_release(JOYPAD_BUTTONS, START$DOWN);
 				break;
-
+			case SDLK_TAB:
+				io_joypad_release(JOYPAD_BUTTONS, TAB);
+				break;
 			case SDLK_RIGHT:
 				io_joypad_release(JOYPAD_DPAD, A$RIGHT);
 				break;
@@ -105,7 +109,6 @@ void hndlevnt(int *running)
 			case SDLK_DOWN:
 				io_joypad_release(JOYPAD_DPAD, START$DOWN);
 				break;
-
 			default:
 				break;
 			}
@@ -139,9 +142,9 @@ int main(int argc, char *argv[])
 	uint64_t start = SDL_GetTicksNS();
 	uint64_t next_frame_time = start;
 
-	while (running) {
+	while (gb.running) {
 		next_frame_time += NS_PER_FRAME;
-		hndlevnt(&running);
+		hndlevnt(&gb.running);
 		gb_emulate(&gb);
 		render(&gb);
 
@@ -154,14 +157,25 @@ int main(int argc, char *argv[])
 		while (SDL_GetTicksNS() < next_frame_time) {
 		}
 	}
-	ms_tot = ((SDL_GetTicksNS() - start));
+	uint64_t done = (SDL_GetTicksNS());
+	ms_tot = (done - start);
 
 	fprintf(stderr, "\nframes: %lu\ntotal time: %.12lf seconds,\n", frames,
 		ms_tot / 1.0E9);
 	fprintf(stderr, "expected time: %.12lf seconds\n\n",
 		NS_PER_FRAME / 1.0E9 * frames);
 
+	if (gb.error)
+		fprintf(stderr,
+			"\nERROR: last op: 0x%02x (prefix: %b)\npc: 0x%04x, instr: %lu\n\n",
+			gb.cpu.op, gb.cpu.prefix, gb.cpu.pc, gb.cpu.cnt);
+	else
+		fprintf(stderr,
+			"\nlast op: 0x%02x (prefix: %b)\npc: 0x%04x, instr: %lu\n\n",
+			gb.cpu.op, gb.cpu.prefix, gb.cpu.pc, gb.cpu.cnt);
+
 	log_close();
+	crt_eject(&gb.crt);
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
 	SDL_Quit();

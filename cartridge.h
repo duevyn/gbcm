@@ -4,8 +4,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdio.h>
 
-enum i_cart_head { CART_TYPE = 0x147, ROM_SZ = 0x148, RAM_SZ = 0x149 };
+enum i_cart_head {
+	TITL = 0x134,
+	CART_TYPE = 0x147,
+	ROM_SZ = 0x148,
+	RAM_SZ = 0x149
+};
 
 enum cart_type {
 	ROM_ONLY = 0x00,
@@ -51,6 +57,9 @@ typedef struct Cartridge {
 	uint8_t bk_md;
 	uint8_t n_rom_bk;
 	uint8_t n_rg_bits;
+	uint8_t rtc;
+	char titl[17];
+	bool ram_dirty;
 
 	enum cart_type type;
 
@@ -61,6 +70,8 @@ typedef void (*cart_wr)(struct Cartridge *c, uint16_t addr, uint8_t data);
 extern cart_rd mbc_rd[];
 extern cart_wr mbc_wr[];
 
-void cart_load(struct Cartridge *crt, const char *path);
+void crt_load(struct Cartridge *c, const char *pth);
+void crt_eject(struct Cartridge *c);
+void crt_sv_ram(struct Cartridge *c);
 
 #endif
